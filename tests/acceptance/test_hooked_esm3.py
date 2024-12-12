@@ -14,7 +14,7 @@ def test_compare_esm_attention_and_pytorch_attention():
     d_model = 512
     n_heads = 8
     d_head = d_model // n_heads
-    bias = false
+    bias = False
     batch_size = 1
     seq_len = 10
     qk_layernorm= True
