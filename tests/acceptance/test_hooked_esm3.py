@@ -10,6 +10,7 @@ from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 import functools
 import einops
 
+ATOL = 1e-2
 def test_compare_esm_attention_and_pytorch_attention():
     d_model = 512
     n_heads = 8
@@ -51,16 +52,13 @@ def test_compare_esm_attention_and_pytorch_attention():
     assign_params_to_transformer_lens_attention_layer(tested_attention_layer, pre_layer_norm,fake_params, cfg, bias)
 
     x= torch.rand((batch_size,seq_len, d_model))
-    print("hi")
-    print(esm_original_component.forward)
-    attention_res1 = esm_original_component.forward(x.clone(), None)
+    #attention_res1 = esm_original_component.forward(x.clone(), None)
 
-    #tested:
-    attention_res2= pre_layer_norm(x.clone())
-    attention_res2 = tested_attention_layer(attention_res2, attention_res2, attention_res2)
+    layer_norm1= pre_layer_norm(x.clone())
+    layer_norm2=esm_original_component.layernorm_qkv[0](x.clone())
+    #attention_res2 = tested_attention_layer(attention_res2, attention_res2, attention_res2)
+    assert(torch.allclose(layer_norm1, layer_norm2, atol=ATOL))
 
-    print(attention_res1)
-    print(attention_res2)
 
 def create_multi_head_attention_params(d_model, n_heads, bias=False, qk_layernorm=False):
     params = {

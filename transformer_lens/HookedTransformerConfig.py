@@ -192,8 +192,8 @@ class HookedTransformerConfig:
         NTK_by_parts_factor (float): The overall factor used in the "NTK-by-parts" method that
             affects the rate of change between low and high-frequency interpolation strategies.
             Defaults to 8.0.
-
-
+        qk_layer_norm(bool): Whether to apply layer normalization on query and key
+        esm3_mlp_expansion_ratio(float, "optional"): expansion factor for esm_3 mlp
     """
 
     n_layers: int
@@ -262,7 +262,8 @@ class HookedTransformerConfig:
     NTK_by_parts_low_freq_factor: float = 1.0
     NTK_by_parts_high_freq_factor: float = 4.0
     NTK_by_parts_factor: float = 8.0
-    qk_layernorm: bool = False 
+    qk_layernorm: bool = False
+    esm3_mlp_expansion_ratio: Optional[float] = None
 
     def __post_init__(self):
         if self.n_heads == -1:
