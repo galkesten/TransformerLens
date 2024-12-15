@@ -191,13 +191,17 @@ def solu(input: Float[torch.Tensor, "batch pos d_mlp"]) -> Float[torch.Tensor, "
     """
     return input * F.softmax(input, dim=-1)
 
-def swiglu(input: Float[torch.Tensor, "batch pos d_mlp"]) -> Float[torch.Tensor, "batch pos d_mlp"]:
+def swiglu(input: Float[torch.Tensor, "batch pos d_mlp"]) -> Float[torch.Tensor, "batch pos d_mlp_half"]:
     """
     Taken from https://github.com/evolutionaryscale/esm/blob/main/esm/layers/blocks.py 
     To do - add copyright
+
+    Assumption:
+    d_mlp_half = d_mlp // 2
     """
     x1, x2 = input.chunk(2, dim=-1)
     return F.silu(x1) * x2
+
 
 ACTIVATION_FN_DICT = {
     "solu": solu,

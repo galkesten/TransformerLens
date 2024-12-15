@@ -22,7 +22,8 @@ from .embed import Embed
 from .grouped_query_attention import GroupedQueryAttention
 from .mlps.gated_mlp import GatedMLP
 from .mlps.mlp import MLP
-
+from .mlps.esm3_hooked_mlp import ESM3_Hooked_MLP
+from .mlps.esm3_hooked_mlp import swiglu_correction_fn
 # Interdependent modules
 from .bert_block import BertBlock
 from .bert_embed import BertEmbed

@@ -194,6 +194,7 @@ class HookedTransformerConfig:
             Defaults to 8.0.
         qk_layer_norm(bool): Whether to apply layer normalization on query and key
         esm3_mlp_expansion_ratio(float, "optional"): expansion factor for esm_3 mlp
+        esm3_mlp_bias: Whether to include layer bias at mlp layer for esm3
     """
 
     n_layers: int
@@ -264,6 +265,7 @@ class HookedTransformerConfig:
     NTK_by_parts_factor: float = 8.0
     qk_layernorm: bool = False
     esm3_mlp_expansion_ratio: Optional[float] = None
+    esm3_mlp_bias:bool = False
 
     def __post_init__(self):
         if self.n_heads == -1:
