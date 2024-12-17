@@ -30,13 +30,13 @@ class ESM3_Hooked_MLP(CanBeUsedAsMLP):
         self.l1 = nn.Linear(
             in_features=self.cfg.d_model, 
             out_features=swiglu_correction_fn(self.cfg.esm3_mlp_expansion_ratio, self.cfg.d_model) * 2, 
-            bias=self.cfg.esm3_mlp_bias,
+            bias=self.cfg.esm3_bias,
             dtype=self.cfg.dtype
         )
         self.l2 = nn.Linear(
             in_features=swiglu_correction_fn(self.cfg.esm3_mlp_expansion_ratio, self.cfg.d_model),
             out_features=self.cfg.d_model,
-            bias=self.cfg.esm3_mlp_bias,
+            bias=self.cfg.esm3_bias,
             dtype=self.cfg.dtype
         )
 

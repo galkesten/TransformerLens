@@ -6,22 +6,25 @@ import torch.nn as nn
 from transformer_lens.components import Attention
 from transformer_lens.components import LayerNorm
 from transformer_lens.components import ESM3_Hooked_MLP, swiglu_correction_fn
+from transformer_lens.components import HookedEsm3UnifiedTransformerBlock
 from esm.layers.attention import MultiHeadAttention
-from esm.layers.blocks import swiglu_ln_ffn
+from esm.layers.blocks import swiglu_ln_ffn, UnifiedTransformerBlock
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 import functools
 import einops
+import math 
 
-ATOL = 1e-5
-RTOL=1e-5
+ATOL = 1e-05
+RTOL=1e-05
 @pytest.mark.parametrize("bias", [False, True])
-def test_compare_esm_attention_and_pytorch_attention(bias):
+@pytest.mark.parametrize("use_attn_result", [False, True])
+@pytest.mark.parametrize("qk_layernorm", [False, True])
+def test_compare_esm_attention_and_pytorch_attention(bias, use_attn_result, qk_layernorm):
     d_model = 512
     n_heads = 8
     d_head = d_model // n_heads
     batch_size = 1
     seq_len = 10
-    qk_layernorm= True
 
     fake_params = create_multi_head_attention_params(d_model, n_heads, bias=bias, qk_layernorm=qk_layernorm)
 
@@ -29,7 +32,7 @@ def test_compare_esm_attention_and_pytorch_attention(bias):
     esm_original_component = MultiHeadAttention(d_model, n_heads, bias, qk_layernorm).to(torch.float32)
 
     # Assign the explicit parameters to the model
-    assign_params_to__esm_attention_layer(esm_original_component, fake_params, bias)
+    assign_params_to_esm_attention_layer(esm_original_component, fake_params, bias)
 
     #Now we want to create attention of transformer lens for comparing...
 
@@ -47,10 +50,8 @@ def test_compare_esm_attention_and_pytorch_attention(bias):
     qk_layernorm=qk_layernorm,
     dtype=torch.float32,
     attn_only=True,
-    use_attn_result=False
-)
+    use_attn_result=use_attn_result)
 
-#create transformer lens attention and initialize:
     with torch.no_grad():
         tested_attention_layer = Attention(cfg)
         pre_layer_norm = LayerNorm(cfg, d_model)
@@ -87,7 +88,7 @@ def create_multi_head_attention_params(d_model, n_heads, bias=False, qk_layernor
     return params
     
 
-def assign_params_to__esm_attention_layer(layer, params, bias=True):
+def assign_params_to_esm_attention_layer(layer, params, bias=True):
     with torch.no_grad():
         # Assign LayerNorm for QKV
         layer.layernorm_qkv[0].weight.copy_(params["layernorm_qkv_weight"])
@@ -118,8 +119,12 @@ def assign_params_to__esm_attention_layer(layer, params, bias=True):
 def assign_params_to_transformer_lens_attention_layer(attention_layer, pre_layer_norm, params, cfg, bias=True):
     with torch.no_grad():
         # Assign LayerNorm QKV
-        pre_layer_norm.w.copy_(params["layernorm_qkv_weight"])
-        pre_layer_norm.b.copy_(params["layernorm_qkv_bias"])
+        if isinstance(pre_layer_norm, nn.LayerNorm):
+            pre_layer_norm.weight.copy_(params["layernorm_qkv_weight"])
+            pre_layer_norm.bias.copy_(params["layernorm_qkv_bias"])
+        else:
+            pre_layer_norm.w.copy_(params["layernorm_qkv_weight"])
+            pre_layer_norm.b.copy_(params["layernorm_qkv_bias"])
 
         # Extract and split QKV weights
         qkv_matrix = params["W_qkv_weight"].clone()  # Shape: (d_model * 3, d_model)
@@ -198,9 +203,13 @@ def assign_params_to_swiglu_mlp(mdl, params, bias):
 
 def assign_params_to_esm_mlp(mdl, params, bias, pre_layer_norm):
     with torch.no_grad():
-        # Assign LayerNorm 
-        pre_layer_norm.w.copy_(params["layernorm_weight"])
-        pre_layer_norm.b.copy_(params["layernorm_bias"])
+        # Assign LayerNorm
+        if isinstance(pre_layer_norm, nn.LayerNorm): 
+            pre_layer_norm.weight.copy_(params["layernorm_weight"])
+            pre_layer_norm.bias.copy_(params["layernorm_bias"])
+        else:
+            pre_layer_norm.w.copy_(params["layernorm_weight"])
+            pre_layer_norm.b.copy_(params["layernorm_bias"])
         # Assign first Linear layer parameters
         mdl.l1.weight.copy_(params["l1_weight"])
         if bias:
@@ -237,7 +246,7 @@ def test_compare_esm_and_swiglu_mlp(bias, expansion_ratio):
         dtype=torch.float32,
         esm3_mlp_expansion_ratio=expansion_ratio,
         act_fn = "swiglu",
-        esm3_mlp_bias = bias
+        esm3_bias = bias
     )
 
     # Create ESM3_Hooked_MLP
@@ -261,3 +270,92 @@ def test_compare_esm_and_swiglu_mlp(bias, expansion_ratio):
     diff = torch.abs(original_output - hooked_output)
     print("Maximum absolute difference:", torch.max(diff))
     print("Mean absolute difference:", torch.mean(diff))
+
+
+def assign_params_to_hooked_esm3_transformer_block(block:HookedEsm3UnifiedTransformerBlock, attention_params, mlp_params ,bias, cfg):
+    attn = block.attn
+    attn_layer_norm = block.ln1
+    assign_params_to_transformer_lens_attention_layer(attn, attn_layer_norm, attention_params, cfg, bias=bias)
+    mlp = block.mlp
+    mlp_layer_norm = block.ln2
+    assign_params_to_esm_mlp(mlp, mlp_params,bias,mlp_layer_norm)
+
+
+def assign_params_to_original_transformer_block(block:UnifiedTransformerBlock, attention_params, mlp_params ,bias):
+    attention_layer = block.attn
+    assign_params_to_esm_attention_layer(attention_layer, attention_params, bias)
+    mlp = block.ffn
+    assign_params_to_swiglu_mlp(mlp, mlp_params, bias)
+
+
+@pytest.mark.parametrize("bias", [False, True])
+@pytest.mark.parametrize("use_attn_in", [False, True])
+@pytest.mark.parametrize("use_hook_mlp_in", [False, True])
+@pytest.mark.parametrize("use_split_qkv_input", [False, True])
+@pytest.mark.parametrize("residue_scaling_factor", [1.0, math.sqrt(48 / 36)])
+def test_compare_unified_and_hooked_transformer_blocks(bias, residue_scaling_factor, use_attn_in, use_hook_mlp_in, use_split_qkv_input):
+    d_model = 512
+    n_heads = 8
+    d_head = d_model // n_heads
+    expansion_ratio = 8/3
+    batch_size = 1
+    seq_len = 10
+    qk_layernorm = True
+
+    attention_fake_params = create_multi_head_attention_params(d_model=d_model,  n_heads=n_heads, 
+    qk_layernorm=qk_layernorm, bias=bias)
+
+    mlp_fake_params = create_mlp_params(d_model=d_model, expansion_ratio=expansion_ratio, bias=bias)
+
+    original_block:UnifiedTransformerBlock = UnifiedTransformerBlock(
+        d_model=d_model,
+        n_heads=n_heads,
+        use_geom_attn=False,
+        use_plain_attn=True,
+        v_heads=None,
+        bias=bias,
+        expansion_ratio=expansion_ratio,
+        residue_scaling_factor=residue_scaling_factor,
+        qk_layernorm= qk_layernorm,
+        ffn_type="swiglu",
+    )
+    
+    assign_params_to_original_transformer_block(original_block, attention_fake_params, mlp_fake_params, bias)
+    # Initialize HookedEsm3UnifiedTransformerBlock
+    cfg = HookedTransformerConfig(
+    n_layers=1,           
+    d_model=d_model,           
+    n_ctx=20,            
+    d_head=d_head,                     
+    n_heads=n_heads,
+    attention_dir="bidirectional",
+    init_weights=False,
+    positional_embedding_type="rotary",
+    rotary_dim=d_head,
+    default_prepend_bos=False,
+    qk_layernorm=qk_layernorm,
+    dtype=torch.float32,
+    use_attn_result=False, 
+    esm3_mlp_expansion_ratio=expansion_ratio,
+    act_fn = "swiglu",
+    esm3_bias = bias,
+    use_attn_in = use_attn_in,
+    use_hook_mlp_in = use_attn_in,
+    use_split_qkv_input= use_attn_in,
+    esm3_scaling_factor=residue_scaling_factor
+)
+    hooked_block:HookedEsm3UnifiedTransformerBlock = HookedEsm3UnifiedTransformerBlock(cfg, block_index=0)
+    assign_params_to_hooked_esm3_transformer_block(hooked_block,attention_fake_params, mlp_fake_params, bias, cfg)
+
+    # Input tensor
+    x = torch.rand((batch_size, seq_len, d_model))
+
+    # Forward pass
+    with torch.no_grad():
+        original_output =  original_block.forward(x.clone(), None, None, None, None)
+        hooked_output = hooked_block.forward(x.clone())
+
+    # Compare outputs
+    assert torch.allclose(original_output, hooked_output, atol=ATOL, rtol=1e-4), "Outputs do not match!"
+    print("Maximum absolute difference:", torch.max(torch.abs(original_output - hooked_output)))
+    print("Mean absolute difference:", torch.mean(torch.abs(original_output - hooked_output)))

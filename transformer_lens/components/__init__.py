@@ -24,6 +24,7 @@ from .mlps.gated_mlp import GatedMLP
 from .mlps.mlp import MLP
 from .mlps.esm3_hooked_mlp import ESM3_Hooked_MLP
 from .mlps.esm3_hooked_mlp import swiglu_correction_fn
+from .esm3_hooked_block import HookedEsm3UnifiedTransformerBlock
 # Interdependent modules
 from .bert_block import BertBlock
 from .bert_embed import BertEmbed
