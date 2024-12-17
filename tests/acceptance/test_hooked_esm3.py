@@ -5,7 +5,7 @@ from torch.testing import assert_close
 import torch.nn as nn
 from transformer_lens.components import Attention
 from transformer_lens.components import LayerNorm
-from transformer_lens.components import ESM3_Hooked_MLP, swiglu_correction_fn
+from transformer_lens.components import HookedESM3MLP, swiglu_correction_fn
 from transformer_lens.components import HookedEsm3UnifiedTransformerBlock
 from esm.layers.attention import MultiHeadAttention
 from esm.layers.blocks import swiglu_ln_ffn, UnifiedTransformerBlock
@@ -250,7 +250,7 @@ def test_compare_esm_and_swiglu_mlp(bias, expansion_ratio):
     )
 
     # Create ESM3_Hooked_MLP
-    esm_mlp = ESM3_Hooked_MLP(cfg)
+    esm_mlp = HookedESM3MLP(cfg)
     pre_layer_norm = LayerNorm(cfg, d_model)
     # Assign parameters to ESM3_Hooked_MLP
     assign_params_to_esm_mlp(esm_mlp, fake_params, bias, pre_layer_norm)
@@ -353,7 +353,7 @@ def test_compare_unified_and_hooked_transformer_blocks(bias, residue_scaling_fac
     # Forward pass
     with torch.no_grad():
         original_output =  original_block.forward(x.clone(), None, None, None, None)
-        hooked_output = hooked_block.forward(x.clone())
+        hooked_output = hooked_block.forward(x.clone(), None, None, None, None)
 
     # Compare outputs
     assert torch.allclose(original_output, hooked_output, atol=ATOL, rtol=1e-4), "Outputs do not match!"

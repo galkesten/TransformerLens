@@ -22,7 +22,7 @@ def swiglu_correction_fn(expansion_ratio: float, d_model: int) -> int:
     # set hidden dimesion to nearest multiple of 256 after expansion ratio
     return int(((expansion_ratio * d_model) + 255) // 256 * 256)
 
-class ESM3_Hooked_MLP(CanBeUsedAsMLP):
+class HookedESM3MLP(CanBeUsedAsMLP):
     def __init__(self, cfg: Union[Dict, HookedTransformerConfig]):
         super().__init__(cfg)
         self.select_activation_function()

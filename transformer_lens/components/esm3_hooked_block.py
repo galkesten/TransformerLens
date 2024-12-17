@@ -13,12 +13,16 @@ from jaxtyping import Float, Int
 from transformer_lens.components import (
     Attention,
     LayerNorm,
-    ESM3_Hooked_MLP
+    HookedESM3MLP
 )
 from transformer_lens.hook_points import HookPoint
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.utils import repeat_along_head_dimension
 from transformer_lens.components.mlps.can_be_used_as_mlp import CanBeUsedAsMLP
+from esm.utils.structure.affine3d import Affine3D
+from esm.layers.geom_attention import (
+    GeometricReasoningOriginalImpl,
+)
 
 # Transformer Block
 class HookedEsm3UnifiedTransformerBlock(nn.Module):
@@ -26,14 +30,32 @@ class HookedEsm3UnifiedTransformerBlock(nn.Module):
     ln2: nn.Module
     mlp: CanBeUsedAsMLP
 
-    def __init__(self, cfg: Union[Dict, HookedTransformerConfig], block_index):
+    def __init__(self, 
+    cfg: Union[Dict, HookedTransformerConfig], 
+    block_index,
+    use_geom_attn=False,
+    v_heads: int | None = None,
+    mask_and_zero_frameless: bool = False 
+    ):
         super().__init__()
 
         self.cfg = HookedTransformerConfig.unwrap(cfg)
         self.ln1 = LayerNorm(cfg)
         self.ln2 = LayerNorm(cfg)
         self.attn = Attention(cfg, "global", block_index)
-        self.mlp = ESM3_Hooked_MLP(cfg)
+        self.mlp = HookedESM3MLP(cfg)
+        self.use_geom_attn = use_geom_attn
+        if self.use_geom_attn:
+            if v_heads is None:
+                raise ValueError("v_heads must be specified when use_geom_attn is True")
+            self.geom_attn = GeometricReasoningOriginalImpl(
+                c_s=self.cfg.d_model,
+                v_heads=v_heads,
+                bias=self.cfg.esm3_bias,
+                mask_and_zero_frameless=mask_and_zero_frameless,
+            )
+            self.hook_geo_attn_in = HookPoint()
+            self.hook_geo_attn_out = HookPoint()
 
         self.hook_attn_in = HookPoint()  # [batch, pos, n_heads, d_model]
         self.hook_q_input = HookPoint()  # [batch, pos, n_heads, d_model]
@@ -47,11 +69,16 @@ class HookedEsm3UnifiedTransformerBlock(nn.Module):
         self.hook_resid_pre = HookPoint()  # [batch, pos, d_model]
         self.hook_resid_mid = HookPoint()  # [batch, pos, d_model]
         self.hook_resid_post = HookPoint()  # [batch, pos, d_model]
+        self.hook_resid_mid_geo = HookPoint()
+
 
     def forward(
         self,
         resid_pre: Float[torch.Tensor, "batch pos d_model"],
-        sequence_id: Optional[Int[torch.Tensor, "batch pos"]] = None,
+        sequence_id: Optional[Int[torch.Tensor, "batch pos"]],
+        frames: Optional[Affine3D],
+        frames_mask: Optional[torch.Tensor],
+        chain_id: Optional[torch.Tensor],
     ) -> Float[torch.Tensor, "batch pos d_model"]:
         """A single Transformer block.
 
@@ -99,6 +126,13 @@ class HookedEsm3UnifiedTransformerBlock(nn.Module):
         attn_out = self.hook_attn_out(attn_out)
         scaled_attn_out = attn_out / self.cfg.esm3_scaling_factor
         resid_mid = self.hook_resid_mid(resid_pre +scaled_attn_out)  # [batch, pos, d_model]
+
+        if self.use_geom_attn:
+            geo_attn_in = self.hook_geo_attn_in(resid_mid.clone())
+            geo_attn_out =  self.hook_geo_attn_out(self.geom_attn(geo_attn_in, frames, frames_mask, sequence_id, chain_id))
+            scaled_geo_attn = geo_attn_out/self.cfg.esm3_scaling_factor
+            resid_mid = self.hook_resid_mid_geo(resid_mid + scaled_geo_attn)
+
         mlp_in = (
                 resid_mid if not self.cfg.use_hook_mlp_in else self.hook_mlp_in(resid_mid.clone())
             )

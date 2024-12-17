@@ -269,7 +269,7 @@ class HookedTransformerConfig:
     esm3_mlp_expansion_ratio: Optional[float] = None
     esm3_bias:bool = False
     esm3_scaling_factor :Optional[float] = None
-
+    esm3_output_type : Optional[str] = None
     def __post_init__(self):
         if self.n_heads == -1:
             self.n_heads = self.d_model // self.d_head

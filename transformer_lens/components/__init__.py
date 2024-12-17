@@ -22,9 +22,12 @@ from .embed import Embed
 from .grouped_query_attention import GroupedQueryAttention
 from .mlps.gated_mlp import GatedMLP
 from .mlps.mlp import MLP
-from .mlps.esm3_hooked_mlp import ESM3_Hooked_MLP
+from .mlps.esm3_hooked_mlp import HookedESM3MLP
 from .mlps.esm3_hooked_mlp import swiglu_correction_fn
 from .esm3_hooked_block import HookedEsm3UnifiedTransformerBlock
+from .esm3_hooked_embed import HookedESM3Embed
+from .esm3_hooked_transformer_stack import HookedEsm3TransformerStack
+from .esm3_hooked_unembed import HookedEsm3OutputHeads 
 # Interdependent modules
 from .bert_block import BertBlock
 from .bert_embed import BertEmbed
