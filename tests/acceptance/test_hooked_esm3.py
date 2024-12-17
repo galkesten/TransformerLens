@@ -340,8 +340,8 @@ def test_compare_unified_and_hooked_transformer_blocks(bias, residue_scaling_fac
     act_fn = "swiglu",
     esm3_bias = bias,
     use_attn_in = use_attn_in,
-    use_hook_mlp_in = use_attn_in,
-    use_split_qkv_input= use_attn_in,
+    use_hook_mlp_in = use_hook_mlp_in,
+    use_split_qkv_input= use_split_qkv_input,
     esm3_scaling_factor=residue_scaling_factor
 )
     hooked_block:HookedEsm3UnifiedTransformerBlock = HookedEsm3UnifiedTransformerBlock(cfg, block_index=0)

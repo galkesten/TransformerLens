@@ -34,8 +34,6 @@ class HookedEsm3UnifiedTransformerBlock(nn.Module):
     cfg: Union[Dict, HookedTransformerConfig], 
     block_index,
     use_geom_attn=False,
-    v_heads: int | None = None,
-    mask_and_zero_frameless: bool = False 
     ):
         super().__init__()
 
@@ -46,13 +44,13 @@ class HookedEsm3UnifiedTransformerBlock(nn.Module):
         self.mlp = HookedESM3MLP(cfg)
         self.use_geom_attn = use_geom_attn
         if self.use_geom_attn:
-            if v_heads is None:
+            if self.cfg.esm3_v_heads is None:
                 raise ValueError("v_heads must be specified when use_geom_attn is True")
             self.geom_attn = GeometricReasoningOriginalImpl(
                 c_s=self.cfg.d_model,
-                v_heads=v_heads,
+                v_heads=self.cfg.esm3_v_heads,
                 bias=self.cfg.esm3_bias,
-                mask_and_zero_frameless=mask_and_zero_frameless,
+                mask_and_zero_frameless=self.cfg.esm3_mask_and_zero_frameless,
             )
             self.hook_geo_attn_in = HookPoint()
             self.hook_geo_attn_out = HookPoint()

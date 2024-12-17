@@ -25,13 +25,15 @@ class HookedEsm3OutputHeads(nn.Module):
 
     def forward(
         self, residual: Float[torch.Tensor, "batch pos d_model"],
-        embedding: Float[torch.Tensor, "batch pos d_model"]
+        embedding: Float[torch.Tensor, "batch pos d_model"],
         ) -> Union[
         Float[torch.Tensor, "batch pos d_vocab_out"],
-        ESMOutput
+        ESMOutput,
+        None
     ]:
-
         if self.cfg.esm3_output_type is None:       
+            raise ValueError("Missing esm3_output_type in config")
+        if self.cfg.esm3_output_type == "all":       
             res = self.output_heads(residual, embedding)
             return res
         elif  self.cfg.esm3_output_type=="sequence":

@@ -17,14 +17,12 @@ from transformer_lens.components import (
 )
 from transformer_lens.hook_points import HookPoint
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
-
+from esm.utils.structure.affine3d import Affine3D
 # Transformer Block
 class HookedEsm3TransformerStack(nn.Module):
 
     def __init__(self, 
     cfg: Union[Dict, HookedTransformerConfig], 
-    v_heads: int | None = None,
-    mask_and_zero_frameless: bool = False 
     ):
         super().__init__()
         self.cfg = cfg
@@ -32,10 +30,8 @@ class HookedEsm3TransformerStack(nn.Module):
             [
                 HookedEsm3UnifiedTransformerBlock(
                     cfg=cfg,
-                    use_geom_attn=i < n_layers_geom,
+                    use_geom_attn=i < self.cfg.esm3_n_layers_geom,
                     block_index=i,
-                    v_heads=v_heads,
-                    mask_and_zero_frameless=mask_and_zero_frameless
                 )
                 for i in self.cfg.n_layers
             ]
