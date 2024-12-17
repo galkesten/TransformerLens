@@ -13,6 +13,7 @@ import functools
 import einops
 
 ATOL = 1e-5
+RTOL=1e-5
 @pytest.mark.parametrize("bias", [False, True])
 def test_compare_esm_attention_and_pytorch_attention(bias):
     d_model = 512
@@ -60,7 +61,7 @@ def test_compare_esm_attention_and_pytorch_attention(bias):
 
         layer_norm1= pre_layer_norm(x.clone())
         attention_res2 = tested_attention_layer(layer_norm1, layer_norm1, layer_norm1)
-        assert(torch.allclose(attention_res1, attention_res2, atol=ATOL, rtol=1e-3))
+        assert(torch.allclose(attention_res1, attention_res2, atol=ATOL, rtol=RTOL))
         diff = torch.abs(attention_res1 - attention_res2)
         print("Maximum absolute difference:", torch.max(diff))
         print("Mean absolute difference:", torch.mean(diff))
@@ -256,7 +257,7 @@ def test_compare_esm_and_swiglu_mlp(bias, expansion_ratio):
         hooked_output = esm_mlp(layer_norm1)
 
     # Compare outputs
-    assert torch.allclose(original_output, hooked_output, atol=ATOL, rtol=1e-3), "Outputs do not match!"
+    assert torch.allclose(original_output, hooked_output, atol=ATOL, rtol=RTOL), "Outputs do not match!"
     diff = torch.abs(original_output - hooked_output)
     print("Maximum absolute difference:", torch.max(diff))
     print("Mean absolute difference:", torch.mean(diff))

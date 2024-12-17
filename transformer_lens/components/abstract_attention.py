@@ -22,7 +22,7 @@ if is_bitsandbytes_available():
     import bitsandbytes as bnb
     from bitsandbytes.nn.modules import Params4bit
 
-
+#To do - add support for mask for sequence_id for esm3
 class AbstractAttention(ABC, nn.Module):
     alibi: Union[torch.Tensor, None]
 
