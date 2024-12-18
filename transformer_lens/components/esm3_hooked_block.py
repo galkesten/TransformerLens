@@ -38,10 +38,8 @@ class HookedEsm3UnifiedTransformerBlock(nn.Module):
         super().__init__()
 
         self.cfg = HookedTransformerConfig.unwrap(cfg)
-        self.ln1 = LayerNorm(cfg)
-        self.ln2 = LayerNorm(cfg)
+        self.ln1 = nn.LayerNorm(cfg.d_model) if cfg.esm3_use_torch_layer_norm else LayerNorm(self.cfg)
         self.attn = Attention(cfg, "global", block_index)
-        self.mlp = HookedESM3MLP(cfg)
         self.use_geom_attn = use_geom_attn
         if self.use_geom_attn:
             if self.cfg.esm3_v_heads is None:
@@ -55,6 +53,9 @@ class HookedEsm3UnifiedTransformerBlock(nn.Module):
             self.hook_geo_attn_in = HookPoint()
             self.hook_geo_attn_out = HookPoint()
 
+        self.ln2 = nn.LayerNorm(cfg.d_model) if cfg.esm3_use_torch_layer_norm else LayerNorm(self.cfg)
+        self.mlp = HookedESM3MLP(cfg)
+        
         self.hook_attn_in = HookPoint()  # [batch, pos, n_heads, d_model]
         self.hook_q_input = HookPoint()  # [batch, pos, n_heads, d_model]
         self.hook_k_input = HookPoint()  # [batch, pos, n_heads, d_model]
@@ -68,7 +69,7 @@ class HookedEsm3UnifiedTransformerBlock(nn.Module):
         self.hook_resid_mid = HookPoint()  # [batch, pos, d_model]
         self.hook_resid_post = HookPoint()  # [batch, pos, d_model]
         self.hook_resid_mid_geo = HookPoint()
-
+        self.hook_post_layer_norm=HookPoint()
 
     def forward(
         self,
@@ -109,19 +110,18 @@ class HookedEsm3UnifiedTransformerBlock(nn.Module):
             key_input = attn_in
             value_input = attn_in
 
-        attn_out = (
+        attn_out = self.hook_attn_out(
             # hook the residual stream states that are used to calculate the
             # queries, keys and values, independently.
             # Then take the layer norm of these inputs, and pass these to the attention module.
             self.attn(
-                query_input=self.ln1(query_input),
+                query_input=self.hook_post_layer_norm(self.ln1(query_input)),
                 key_input=self.ln1(key_input),
                 value_input=self.ln1(value_input),
                 past_kv_cache_entry=None,
                 attention_mask=None,
             )
         )  # [batch, pos, d_model]
-        attn_out = self.hook_attn_out(attn_out)
         scaled_attn_out = attn_out / self.cfg.esm3_scaling_factor
         resid_mid = self.hook_resid_mid(resid_pre +scaled_attn_out)  # [batch, pos, d_model]
 

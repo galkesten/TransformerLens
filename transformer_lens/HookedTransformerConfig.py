@@ -273,7 +273,9 @@ class HookedTransformerConfig:
     esm3_v_heads:Optional[int]=None
     esm3_n_layers_geom:Optional[int]=None
     esm3_mask_and_zero_frameless:Optional[bool]=None
-
+    esm3_use_torch_layer_norm:bool=False
+    esm3_use_org_rotary:bool=False
+    esm3_use_torch_attention_calc:bool=False
     def __post_init__(self):
         if self.n_heads == -1:
             self.n_heads = self.d_model // self.d_head
@@ -326,7 +328,7 @@ class HookedTransformerConfig:
             ), "num_experts must be set if experts_per_token is set"
 
         # The number of parameters in attention layers (ignoring biases and layer norm). 4 because W_Q, W_K, W_V and W_O
-        self.n_params = self.n_layers * ((self.d_model * self.d_head * self.n_heads * 4))
+        self.n_params = self.n_layers * ((self.d_model * self.d_head * self.n_heads * 4)) #not true for esm3!!!
         if not self.attn_only:
             assert self.d_mlp is not None  # mypy
             # Number of parameters in MLP layers (ignoring biases and layer norm). 2 because W_in and W_out

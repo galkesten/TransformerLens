@@ -17,10 +17,11 @@ from transformer_lens.past_key_value_caching import HookedTransformerKeyValueCac
 from transformer_lens.utilities.attention import complex_attn_linear, simple_attn_linear
 from transformer_lens.utils import get_offset_position_ids
 from .layer_norm import LayerNorm
-
 if is_bitsandbytes_available():
     import bitsandbytes as bnb
     from bitsandbytes.nn.modules import Params4bit
+
+from esm.layers.rotary import RotaryEmbedding
 
 #To do - add support for mask for sequence_id for esm3
 class AbstractAttention(ABC, nn.Module):
@@ -110,8 +111,9 @@ class AbstractAttention(ABC, nn.Module):
         self.hook_q = HookPoint()  # [batch, pos, head_index, d_head]
         self.hook_v = HookPoint()  # [batch, pos, head_index, d_head]
         self.hook_z = HookPoint()  # [batch, pos, head_index, d_head]
-        self.hook_attn_scores = HookPoint()  # [batch, head_index, query_pos, key_pos]
-        self.hook_pattern = HookPoint()  # [batch, head_index, query_pos, key_pos]
+        if self.cfg.esm3_use_torch_attention_calc == False:
+            self.hook_attn_scores = HookPoint()  # [batch, head_index, query_pos, key_pos]
+            self.hook_pattern = HookPoint()  # [batch, head_index, query_pos, key_pos]
         self.hook_result = HookPoint()  # [batch, pos, head_index, d_model]
 
         # See HookedTransformerConfig for more details.
@@ -124,14 +126,17 @@ class AbstractAttention(ABC, nn.Module):
             self.hook_rot_q = HookPoint()
             if self.cfg.rotary_dim is None:  # keep mypy happy
                 raise ValueError("Rotary dim must be provided for rotary positional embeddings")
-            sin, cos = self.calculate_sin_cos_rotary(
-                self.cfg.rotary_dim,
-                self.cfg.n_ctx,
-                base=self.cfg.rotary_base,
-                dtype=self.cfg.dtype,
-            )
-            self.register_buffer("rotary_sin", sin)
-            self.register_buffer("rotary_cos", cos)
+            if self.cfg.esm3_use_org_rotary:
+                self.rotary = RotaryEmbedding(self.cfg.rotary_dim, device=self.cfg.device) #Todo- figure out difference for rotary in esm original ans transformer lens implementation
+            else:
+                sin, cos = self.calculate_sin_cos_rotary(
+                    self.cfg.rotary_dim,
+                    self.cfg.n_ctx,
+                    base=self.cfg.rotary_base,
+                    dtype=self.cfg.dtype,
+                )
+                self.register_buffer("rotary_sin", sin)
+                self.register_buffer("rotary_cos", cos)
         elif self.cfg.positional_embedding_type == "alibi":
             # ALiBi bias wil be constructed on the first forward pass.
             # Note: While computationally efficient, initializing an bias with max n_ctx (16, 1024, 1024) of float32 will occupy ~256MiB of contiguous GPU memory, which may not be optimal for memory usage.
@@ -142,8 +147,8 @@ class AbstractAttention(ABC, nn.Module):
             self.has_relative_attention_bias = False
 
         if self.cfg.qk_layernorm:
-            self.q_ln = LayerNorm(cfg, length=cfg.d_model)
-            self.k_ln = LayerNorm(cfg,  length=cfg.d_model)
+            self.q_ln = nn.LayerNorm(cfg.d_model, bias=cfg.esm3_bias) if cfg.esm3_use_torch_layer_norm else LayerNorm(cfg, length=cfg.d_model)
+            self.k_ln = nn.LayerNorm(cfg.d_model, bias=cfg.esm3_bias) if cfg.esm3_use_torch_layer_norm else LayerNorm(cfg,  length=cfg.d_model)
             self.hook_ln_k = HookPoint()
             self.hook_ln_q = HookPoint()
 
@@ -223,64 +228,84 @@ class AbstractAttention(ABC, nn.Module):
             kv_cache_pos_offset = 0
 
         if self.cfg.positional_embedding_type == "rotary":
-            q = self.hook_rot_q(self.apply_rotary(q, kv_cache_pos_offset, attention_mask))
-            k = self.hook_rot_k(
-                self.apply_rotary(k, 0, attention_mask)
-            )  # keys are cached so no offset
+            if self.cfg.esm3_use_org_rotary:
+                q, k = self.rotary(q, k)
+                q = self.hook_rot_q(q)
+                k = self.hook_rot_k(k)
+            else:
+                q = self.hook_rot_q(self.apply_rotary(q, kv_cache_pos_offset, attention_mask))
+                k = self.hook_rot_k(
+                    self.apply_rotary(k, 0, attention_mask)
+                )  # keys are cached so no offset
 
         if self.cfg.dtype not in [torch.float32, torch.float64]:
             # If using 16 bits, increase the precision to avoid numerical instabilities
             q = q.to(torch.float32)
             k = k.to(torch.float32)
 
-        attn_scores = self.calculate_attention_scores(
-            q, k
-        )  # [batch, head_index, query_pos, key_pos]
-
-        if self.cfg.positional_embedding_type == "alibi":
-            query_ctx = attn_scores.size(-2)
-            # The key context length is the number of positions in the past - this includes all positions in the cache
-            key_ctx = attn_scores.size(-1)
-
-            # only recompute when necessary to increase efficiency.
-            if self.alibi is None or key_ctx > self.alibi.size(-1):
-                self.alibi = AbstractAttention.create_alibi_bias(
-                    self.cfg.n_heads, key_ctx, self.cfg.device
+        if self.cfg.esm3_use_torch_attention_calc:
+            q = einops.rearrange(
+                    q, "batch pos head_index d_head -> batch head_index pos d_head"
                 )
+            k = einops.rearrange(
+                    k, "batch pos head_index d_head -> batch head_index pos d_head"
+                )
+            v = einops.rearrange(
+                    v, "batch pos head_index d_head -> batch head_index pos d_head"
+                )
+            attn_res= F.scaled_dot_product_attention(query=q, key=k, value=v)
+            z = self.hook_z(einops.rearrange(
+                    attn_res, "batch head_index pos d_head-> batch pos head_index  d_head"
+                ))
+        else:
+            attn_scores = self.calculate_attention_scores(
+                q, k
+            )  # [batch, head_index, query_pos, key_pos]
 
-            # Take the last query_ctx positions so it also works with past_kv_cache
-            attn_scores += self.alibi[
-                :, -query_ctx:, :key_ctx
-            ]  # [batch, head_index, query_pos, key_pos]
-        elif self.cfg.positional_embedding_type == "relative_positional_bias":
-            if position_bias is None:
-                if self.has_relative_attention_bias:
-                    raise ValueError("Positional bias is required for relative_positional_bias")
-                else:
-                    position_bias = torch.zeros(
-                        1,
-                        self.cfg.n_heads,
-                        attn_scores.shape[2],
-                        attn_scores.shape[3],
-                        device=attn_scores.device,
+            if self.cfg.positional_embedding_type == "alibi":
+                query_ctx = attn_scores.size(-2)
+                # The key context length is the number of positions in the past - this includes all positions in the cache
+                key_ctx = attn_scores.size(-1)
+
+                # only recompute when necessary to increase efficiency.
+                if self.alibi is None or key_ctx > self.alibi.size(-1):
+                    self.alibi = AbstractAttention.create_alibi_bias(
+                        self.cfg.n_heads, key_ctx, self.cfg.device
                     )
 
-            attn_scores += position_bias
-        if self.cfg.attention_dir == "causal":
-            # If causal attention, we mask it to only attend backwards. If bidirectional, we don't mask.
-            attn_scores = self.apply_causal_mask(
-                attn_scores, kv_cache_pos_offset, attention_mask
-            )  # [batch, head_index, query_pos, key_pos]
-        if additive_attention_mask is not None:
-            attn_scores += additive_attention_mask
+                # Take the last query_ctx positions so it also works with past_kv_cache
+                attn_scores += self.alibi[
+                    :, -query_ctx:, :key_ctx
+                ]  # [batch, head_index, query_pos, key_pos]
+            elif self.cfg.positional_embedding_type == "relative_positional_bias":
+                if position_bias is None:
+                    if self.has_relative_attention_bias:
+                        raise ValueError("Positional bias is required for relative_positional_bias")
+                    else:
+                        position_bias = torch.zeros(
+                            1,
+                            self.cfg.n_heads,
+                            attn_scores.shape[2],
+                            attn_scores.shape[3],
+                            device=attn_scores.device,
+                        )
 
-        attn_scores = self.hook_attn_scores(attn_scores)
-        pattern = F.softmax(attn_scores, dim=-1)
-        pattern = torch.where(torch.isnan(pattern), torch.zeros_like(pattern), pattern)
-        pattern = self.hook_pattern(pattern)  # [batch, head_index, query_pos, key_pos]
-        pattern = pattern.to(self.cfg.dtype)
-        pattern = pattern.to(v.device)
-        z = self.calculate_z_scores(v, pattern)  # [batch, pos, head_index, d_head]
+                attn_scores += position_bias
+            if self.cfg.attention_dir == "causal":
+                # If causal attention, we mask it to only attend backwards. If bidirectional, we don't mask.
+                attn_scores = self.apply_causal_mask(
+                    attn_scores, kv_cache_pos_offset, attention_mask
+                )  # [batch, head_index, query_pos, key_pos]
+            if additive_attention_mask is not None:
+                attn_scores += additive_attention_mask
+
+            attn_scores = self.hook_attn_scores(attn_scores)
+            pattern = F.softmax(attn_scores, dim=-1)
+            pattern = torch.where(torch.isnan(pattern), torch.zeros_like(pattern), pattern)
+            pattern = self.hook_pattern(pattern)  # [batch, head_index, query_pos, key_pos]
+            pattern = pattern.to(self.cfg.dtype)
+            pattern = pattern.to(v.device)
+            z = self.calculate_z_scores(v, pattern)  # [batch, pos, head_index, d_head]
         if not self.cfg.use_attn_result:
             if self.cfg.load_in_4bit:
                 # call bitsandbytes method to dequantize and multiply
@@ -298,10 +323,11 @@ class AbstractAttention(ABC, nn.Module):
                 w = einops.rearrange(
                     self.W_O, "head_index d_head d_model -> d_model (head_index d_head)"
                 )
+                bias= None if self.cfg.esm3_bias==False and self.cfg.model_name=="esm3" else self.b_O
                 out = F.linear(
                     z.reshape(z.shape[0], z.shape[1], self.cfg.d_head * self.cfg.n_heads),
                     w,
-                    self.b_O,
+                    bias,
                 )
         else:
             # Explicitly calculate the attention result so it can be accessed by a hook

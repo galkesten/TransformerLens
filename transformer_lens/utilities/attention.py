@@ -16,6 +16,8 @@ def simple_attn_linear(
     """Linear layer for attention calculation."""
     w = einops.rearrange(w, "head_index d_model d_head -> (head_index d_head) d_model")
     b_ = einops.rearrange(b, "head_index d_head -> (head_index d_head)")
+    # if torch.all(b_== 0):
+    #     b_=None
     return F.linear(input, w, b_).reshape(input.shape[0], input.shape[1], b.shape[0], b.shape[1])
 
 

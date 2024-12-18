@@ -24,7 +24,7 @@ from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.hook_points import HookedRootModule, HookPoint
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.utilities import devices
-from esm.tokenization import TokenizerCollectionProtocol
+from esm.tokenization import TokenizerCollectionProtocol, TokenizerCollection
 from esm.utils.constants import esm3 as C
 from esm.utils.structure.affine3d import (
     build_affine3d_from_coordinates,
@@ -33,8 +33,14 @@ from esm.utils.constants.models import (
     ESM3_OPEN_SMALL,
     normalize_model_name,
 )
+from esm.models.esm3 import OutputHeads, ESMOutput
 import math
 from esm.tokenization import get_esm3_model_tokenizers
+from esm.pretrained import (
+    ESM3_sm_open_v0,
+)
+from transformer_lens.pretrained.weight_conversions import convert_esm3_weights
+
 class SupportedESM3Config:
     def __init__(
         self,
@@ -43,13 +49,18 @@ class SupportedESM3Config:
         use_hook_mlp_in: bool = False,
         use_attn_in: bool = False,
         esm3_output_type: Optional[str] = None,
+        esm3_use_torch_layer_norm:bool = False,
+        esm3_use_org_rotary:bool = True,
+        esm3_use_torch_attention_calc:bool = False
     ):
         self.use_attn_result = use_attn_result
         self.use_split_qkv_input = use_split_qkv_input
         self.use_hook_mlp_in = use_hook_mlp_in
         self.use_attn_in = use_attn_in
         self.esm3_output_type = esm3_output_type
-
+        self.esm3_use_torch_layer_norm = esm3_use_torch_layer_norm
+        self.esm3_use_org_rotary=esm3_use_org_rotary
+        self.esm3_use_torch_attention_calc=esm3_use_torch_attention_calc
 
     seed: Optional[int] = None
 class HookedESM3(HookedRootModule):
@@ -65,7 +76,7 @@ class HookedESM3(HookedRootModule):
     def __init__(
         self, 
         cfg: Union[HookedTransformerConfig, Dict], 
-        tokenizers: TokenizerCollectionProtocol, 
+        tokenizers: TokenizerCollection, 
         move_to_device=True):
         super().__init__()
         if isinstance(cfg, Dict):
@@ -94,7 +105,7 @@ class HookedESM3(HookedRootModule):
                 for i in range(self.cfg.n_layers)
             ]
         )
-        self.ln_final = LayerNorm(self.cfg)
+        self.ln_final = nn.LayerNorm(cfg.d_model, bias=cfg.esm3_bias) if cfg.esm3_use_torch_layer_norm else LayerNorm(self.cfg)
         self.unembed = HookedEsm3OutputHeads(self.cfg)
 
         if move_to_device:
@@ -295,13 +306,17 @@ class HookedESM3(HookedRootModule):
     @overload
     def run_with_cache(
         self, *model_args, return_cache_object: Literal[True] = True, **kwargs
-    ) -> Tuple[Optional[Union[Float[torch.Tensor, "batch pos d_vocab_out"],ESMOutput],], ActivationCache]:
+    ) -> Tuple[Optional[Union[Float[torch.Tensor, "batch pos d_vocab_out"], ESMOutput]],
+            Union[ActivationCache, Dict[str, torch.Tensor]]
+        ]:
         ...
 
     @overload
     def run_with_cache(
         self, *model_args, return_cache_object: Literal[False], **kwargs
-    ) -> Tuple[Optional[Union[Float[torch.Tensor, "batch pos d_vocab_out"],ESMOutput],], Dict[str, torch.Tensor]]:
+    ) -> Tuple[Optional[Union[Float[torch.Tensor, "batch pos d_vocab_out"], ESMOutput]],
+            Union[ActivationCache, Dict[str, torch.Tensor]]
+        ]:
         ...
 
     def run_with_cache(
@@ -310,12 +325,9 @@ class HookedESM3(HookedRootModule):
         return_cache_object: bool = True,
         remove_batch_dim: bool = False,
         **kwargs,
-    ) -> Tuple[
-        Optional[Union[
-        Float[torch.Tensor, "batch pos d_vocab_out"],
-        ESMOutput],],
-        Union[ActivationCache, Dict[str, torch.Tensor]],
-    ]:
+    ) -> Tuple[Optional[Union[Float[torch.Tensor, "batch pos d_vocab_out"], ESMOutput]],
+            Union[ActivationCache, Dict[str, torch.Tensor]]
+        ]:
         """
         Wrapper around run_with_cache in HookedRootModule. If return_cache_object is True, this will return an ActivationCache object, with a bunch of useful HookedTransformer specific methods, otherwise it will return a dictionary of activations as in HookedRootModule. This function was copied directly from HookedTransformer.
         """
@@ -346,6 +358,13 @@ class HookedESM3(HookedRootModule):
     def mps(self):
         # Wrapper around cuda that also changes self.cfg.device
         return self.to("mps")
+    
+    @classmethod
+    def get_state_dict(cls, device, cfg:HookedTransformerConfig)-> Dict[str, torch.Tensor]:
+        esm3 = ESM3_sm_open_v0(device)
+        for param in esm3.parameters():
+            param.requires_grad = False
+        return convert_esm3_weights(esm3, cfg)
 
     @classmethod
     def from_pretrained(
@@ -355,7 +374,7 @@ class HookedESM3(HookedRootModule):
         device: Optional[str] = None,
         move_to_device=True,
         dtype=torch.float32,  
-    ) -> HookedEncoder:
+    ) -> HookedESM3:
         """Loads in the pretrained weights from huggingface. Currently supports loading weight from HuggingFace BertForMaskedLM. 
         Unlike HookedTransformer, this does not yet do any preprocessing on the model
         We can ony load the open version."""
@@ -386,7 +405,8 @@ class HookedESM3(HookedRootModule):
         n_layers = 48
 
         cfg = HookedTransformerConfig(
-        n_layers=n_layers,           
+        n_layers=n_layers,
+        model_name="esm3",           
         d_model=d_model,           
         n_ctx=2048,            
         d_head=d_head,                     
@@ -409,25 +429,26 @@ class HookedESM3(HookedRootModule):
         esm3_mlp_expansion_ratio= 8 / 3,
         esm3_bias =False,
         esm3_scaling_factor=math.sqrt(n_layers / 36),
-        esm3_output_type=1,
+        esm3_output_type=esm_cfg.esm3_output_type,
         esm3_mask_and_zero_frameless=True,
         esm3_n_layers_geom=1,
         esm3_v_heads = 256,
-    )
-        # state_dict = loading.get_pretrained_state_dict(
-        #     official_model_name, cfg, hf_model, dtype=dtype, **from_pretrained_kwargs
-        # )
+        esm3_use_torch_layer_norm= esm_cfg.esm3_use_torch_layer_norm,
+        esm3_use_org_rotary=esm_cfg.esm3_use_org_rotary,
+        esm3_use_torch_attention_calc=esm_cfg.esm3_use_torch_attention_calc
+        )
+        
+        state_dict = cls.get_state_dict(device, cfg)
         tokenizers=get_esm3_model_tokenizers(ESM3_OPEN_SMALL)
         model = cls(cfg, tokenizers, move_to_device=False)
-
-        #model.load_state_dict(state_dict, strict=False)
-
+        model.load_state_dict(state_dict, strict=False)
         if move_to_device:
             model.to(cfg.device)
 
         print(f"Loaded pretrained model {model_name} into HookedESM3")
 
         return model
+            
     # @property
     # def W_U(self) -> Float[torch.Tensor, "d_model d_vocab"]:
     #     """
@@ -463,77 +484,77 @@ class HookedESM3(HookedRootModule):
     #     """
     #     return torch.cat([self.W_E, self.W_pos], dim=0)
 
-    # @property
-    # def W_K(self) -> Float[torch.Tensor, "n_layers n_heads d_model d_head"]:
-    #     """Stacks the key weights across all layers"""
-    #     return torch.stack([cast(BertBlock, block).attn.W_K for block in self.blocks], dim=0)
+    @property
+    def W_K(self) -> Float[torch.Tensor, "n_layers n_heads d_model d_head"]:
+        """Stacks the key weights across all layers"""
+        return torch.stack([cast(HookedEsm3UnifiedTransformerBlock, block).attn.W_K for block in self.blocks], dim=0)
 
-    # @property
-    # def W_Q(self) -> Float[torch.Tensor, "n_layers n_heads d_model d_head"]:
-    #     """Stacks the query weights across all layers"""
-    #     return torch.stack([cast(BertBlock, block).attn.W_Q for block in self.blocks], dim=0)
+    @property
+    def W_Q(self) -> Float[torch.Tensor, "n_layers n_heads d_model d_head"]:
+        """Stacks the query weights across all layers"""
+        return torch.stack([cast(HookedEsm3UnifiedTransformerBlock, block).attn.W_Q for block in self.blocks], dim=0)
 
-    # @property
-    # def W_V(self) -> Float[torch.Tensor, "n_layers n_heads d_model d_head"]:
-    #     """Stacks the value weights across all layers"""
-    #     return torch.stack([cast(BertBlock, block).attn.W_V for block in self.blocks], dim=0)
+    @property
+    def W_V(self) -> Float[torch.Tensor, "n_layers n_heads d_model d_head"]:
+        """Stacks the value weights across all layers"""
+        return torch.stack([cast(HookedEsm3UnifiedTransformerBlock, block).attn.W_V for block in self.blocks], dim=0)
 
-    # @property
-    # def W_O(self) -> Float[torch.Tensor, "n_layers n_heads d_head d_model"]:
-    #     """Stacks the attn output weights across all layers"""
-    #     return torch.stack([cast(BertBlock, block).attn.W_O for block in self.blocks], dim=0)
+    @property
+    def W_O(self) -> Float[torch.Tensor, "n_layers n_heads d_head d_model"]:
+        """Stacks the attn output weights across all layers"""
+        return torch.stack([cast(HookedEsm3UnifiedTransformerBlock, block).attn.W_O for block in self.blocks], dim=0)
 
-    # @property
-    # def W_in(self) -> Float[torch.Tensor, "n_layers d_model d_mlp"]:
-    #     """Stacks the MLP input weights across all layers"""
-    #     return torch.stack([cast(BertBlock, block).mlp.W_in for block in self.blocks], dim=0)
+    @property
+    def W_in(self) -> Float[torch.Tensor, "n_layers d_model d_mlp1"]:
+        """Stacks the MLP input weights across all layers"""
+        return torch.stack([cast(HookedEsm3UnifiedTransformerBlock, block).mlp.l1.weight for block in self.blocks], dim=0)
 
-    # @property
-    # def W_out(self) -> Float[torch.Tensor, "n_layers d_mlp d_model"]:
-    #     """Stacks the MLP output weights across all layers"""
-    #     return torch.stack([cast(BertBlock, block).mlp.W_out for block in self.blocks], dim=0)
+    @property
+    def W_out(self) -> Float[torch.Tensor, "n_layers d_model d_mlp2"]:
+        """Stacks the MLP output weights across all layers"""
+        return torch.stack([cast(HookedEsm3UnifiedTransformerBlock, block).mlp.l2.weight for block in self.blocks], dim=0)
 
-    # @property
-    # def b_K(self) -> Float[torch.Tensor, "n_layers n_heads d_head"]:
-    #     """Stacks the key biases across all layers"""
-    #     return torch.stack([cast(BertBlock, block).attn.b_K for block in self.blocks], dim=0)
+    @property
+    def b_K(self) -> Float[torch.Tensor, "n_layers n_heads d_head"]:
+        """Stacks the key biases across all layers"""
+        return torch.stack([cast(HookedEsm3UnifiedTransformerBlock, block).attn.b_K for block in self.blocks], dim=0)
 
-    # @property
-    # def b_Q(self) -> Float[torch.Tensor, "n_layers n_heads d_head"]:
-    #     """Stacks the query biases across all layers"""
-    #     return torch.stack([cast(BertBlock, block).attn.b_Q for block in self.blocks], dim=0)
+    @property
+    def b_Q(self) -> Float[torch.Tensor, "n_layers n_heads d_head"]:
+        """Stacks the query biases across all layers"""
+        return torch.stack([cast(HookedEsm3UnifiedTransformerBlock, block).attn.b_Q for block in self.blocks], dim=0)
 
-    # @property
-    # def b_V(self) -> Float[torch.Tensor, "n_layers n_heads d_head"]:
-    #     """Stacks the value biases across all layers"""
-    #     return torch.stack([cast(BertBlock, block).attn.b_V for block in self.blocks], dim=0)
+    @property
+    def b_V(self) -> Float[torch.Tensor, "n_layers n_heads d_head"]:
+        """Stacks the value biases across all layers"""
+        return torch.stack([cast(HookedEsm3UnifiedTransformerBlock, block).attn.b_V for block in self.blocks], dim=0)
 
-    # @property
-    # def b_O(self) -> Float[torch.Tensor, "n_layers d_model"]:
-    #     """Stacks the attn output biases across all layers"""
-    #     return torch.stack([cast(BertBlock, block).attn.b_O for block in self.blocks], dim=0)
+    @property
+    def b_O(self) -> Float[torch.Tensor, "n_layers d_model"]:
+        """Stacks the attn output biases across all layers"""
+        return torch.stack([cast(HookedEsm3UnifiedTransformerBlock, block).attn.b_O for block in self.blocks], dim=0)
 
     # @property
     # def b_in(self) -> Float[torch.Tensor, "n_layers d_mlp"]:
     #     """Stacks the MLP input biases across all layers"""
-    #     return torch.stack([cast(BertBlock, block).mlp.b_in for block in self.blocks], dim=0)
+    #     return torch.stack([cast(HookedEsm3UnifiedTransformerBlock, block).mlp.b_in for block in self.blocks], dim=0)
 
     # @property
     # def b_out(self) -> Float[torch.Tensor, "n_layers d_model"]:
     #     """Stacks the MLP output biases across all layers"""
-    #     return torch.stack([cast(BertBlock, block).mlp.b_out for block in self.blocks], dim=0)
+    #     return torch.stack([cast(HookedEsm3UnifiedTransformerBlock, block).mlp.b_out for block in self.blocks], dim=0)
 
-    # @property
-    # def QK(self) -> FactoredMatrix:  # [n_layers, n_heads, d_model, d_model]
-    #     """Returns a FactoredMatrix object with the product of the Q and K matrices for each layer and head.
-    #     Useful for visualizing attention patterns."""
-    #     return FactoredMatrix(self.W_Q, self.W_K.transpose(-2, -1))
+    @property
+    def QK(self) -> FactoredMatrix:  # [n_layers, n_heads, d_model, d_model]
+        """Returns a FactoredMatrix object with the product of the Q and K matrices for each layer and head.
+        Useful for visualizing attention patterns."""
+        return FactoredMatrix(self.W_Q, self.W_K.transpose(-2, -1))
 
-    # @property
-    # def OV(self) -> FactoredMatrix:  # [n_layers, n_heads, d_model, d_model]
-    #     """Returns a FactoredMatrix object with the product of the O and V matrices for each layer and head."""
-    #     return FactoredMatrix(self.W_V, self.W_O)
+    @property
+    def OV(self) -> FactoredMatrix:  # [n_layers, n_heads, d_model, d_model]
+        """Returns a FactoredMatrix object with the product of the O and V matrices for each layer and head."""
+        return FactoredMatrix(self.W_V, self.W_O)
 
-    # def all_head_labels(self) -> List[str]:
-    #     """Returns a list of strings with the format "L{l}H{h}", where l is the layer index and h is the head index."""
-    #     return [f"L{l}H{h}" for l in range(self.cfg.n_layers) for h in range(self.cfg.n_heads)]
+    def all_head_labels(self) -> List[str]:
+        """Returns a list of strings with the format "L{l}H{h}", where l is the layer index and h is the head index."""
+        return [f"L{l}H{h}" for l in range(self.cfg.n_layers) for h in range(self.cfg.n_heads)]
