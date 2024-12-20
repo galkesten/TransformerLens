@@ -133,7 +133,8 @@ class HookedESM3(HookedRootModule):
         
     ) -> Optional[Union[
         Float[torch.Tensor, "batch pos d_vocab_out"],
-        ESMOutput,
+        Float[torch.Tensor, "batch pos d1 d2"],
+        ESMOutput
     ]]:
         ...
 
@@ -156,7 +157,8 @@ class HookedESM3(HookedRootModule):
         
     ) -> Optional[Union[
         Float[torch.Tensor, "batch pos d_vocab_out"],
-        ESMOutput,
+        Float[torch.Tensor, "batch pos d1 d2"],
+        ESMOutput
     ]]:
         ...
 
@@ -176,8 +178,9 @@ class HookedESM3(HookedRootModule):
         sequence_id: Int[torch.Tensor, "batch pos"] | None = None,
         return_type: Optional[str] = "logits",
     ) -> Optional[Union[
-        Float[torch.Tensor, "batch pos d_vocab_out"],
-        ESMOutput,
+         Float[torch.Tensor, "batch pos d_vocab_out"],
+        Float[torch.Tensor, "batch pos d1 d2"],
+        ESMOutput
     ]]:
         """
         It's all taken from here- https://github.com/evolutionaryscale/esm/blob/main/esm/models/esm3.py#L462

@@ -12,10 +12,25 @@ from esm.layers.blocks import swiglu_ln_ffn, UnifiedTransformerBlock
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 import functools
 import einops
-import math 
+import math
+from esm.pretrained import (
+    ESM3_sm_open_v0,
+)
+from transformer_lens import HookedESM3,SupportedESM3Config
+from esm.tokenization import get_esm3_model_tokenizers
+import gc
 
 ATOL = 1e-05
 RTOL=1e-05
+
+@pytest.fixture(scope="module")
+def device():
+    if torch.cuda.is_available():
+        device = "cuda"
+    else:
+        device = "cpu"
+    return device
+
 @pytest.mark.parametrize("bias", [False, True])
 @pytest.mark.parametrize("use_attn_result", [False, True])
 @pytest.mark.parametrize("qk_layernorm", [False, True])
@@ -359,3 +374,215 @@ def test_compare_unified_and_hooked_transformer_blocks(bias, residue_scaling_fac
     assert torch.allclose(original_output, hooked_output, atol=ATOL, rtol=1e-4), "Outputs do not match!"
     print("Maximum absolute difference:", torch.max(torch.abs(original_output - hooked_output)))
     print("Mean absolute difference:", torch.mean(torch.abs(original_output - hooked_output)))
+
+
+def verify_identical_components(real,hooked):
+    # Compare parameters
+    for (name1, param1), (name2, param2) in zip(real.named_parameters(), hooked.named_parameters()):
+        if name1 != name2:
+            print(f"Mismatch in parameter names: {name1} != {name2}")
+            return False
+        assert torch.sum(param1 != param2) == 0
+
+    print(f"verify_identical_components- All parameters match! {type(real)} {type(hooked)} ")
+    return True
+
+def compare_transformer_blocks(real_block, hooked_block, cfg):
+    if cfg.esm3_use_torch_layer_norm:
+        assert torch.sum(real_block.attn.layernorm_qkv[0].weight !=  hooked_block.ln1.weight) == 0
+        assert torch.sum(real_block.attn.layernorm_qkv[0].bias !=  hooked_block.ln1.bias) == 0
+    else:
+        assert torch.sum(real_block.attn.layernorm_qkv[0].weight !=  hooked_block.ln1.w) == 0
+        assert torch.sum(real_block.attn.layernorm_qkv[0].bias !=  hooked_block.ln1.b) == 0
+        
+    qkv_matrix = real_block.attn.layernorm_qkv[1].weight
+    query_BLD, key_BLD, value_BLD = torch.chunk(qkv_matrix, 3, dim=-2)
+    q = einops.rearrange(hooked_block.attn.W_Q, "n_head d_model d_head ->(n_head d_head) d_model", n_head=hooked_block.attn.W_Q.shape[0])
+    v = einops.rearrange(hooked_block.attn.W_V, "n_head d_model d_head ->(n_head d_head) d_model", n_head=hooked_block.attn.W_V.shape[0])
+    k = einops.rearrange(hooked_block.attn.W_K, "n_head d_model d_head ->(n_head d_head) d_model", n_head=hooked_block.attn.W_K.shape[0])
+    assert torch.sum(query_BLD !=q) == 0
+    assert torch.sum(key_BLD !=k) == 0
+    assert torch.sum(value_BLD !=v) == 0
+    assert(real_block.attn.layernorm_qkv[1].bias is None)
+    assert torch.equal(hooked_block.attn.b_Q, torch.zeros_like(hooked_block.attn.b_Q)), "The tensor is not all zeros."
+    assert torch.equal(hooked_block.attn.b_K, torch.zeros_like(hooked_block.attn.b_K)), "The tensor is not all zeros."
+    assert torch.equal(hooked_block.attn.b_V, torch.zeros_like(hooked_block.attn.b_V)), "The tensor is not all zeros."
+    
+    if cfg.esm3_use_torch_layer_norm:
+        assert torch.sum(real_block.attn.q_ln.weight !=  hooked_block.attn.q_ln.weight) == 0
+        assert torch.sum(real_block.attn.k_ln.weight != hooked_block.attn.k_ln.weight) == 0
+        assert real_block.attn.q_ln.bias is None
+        assert hooked_block.attn.q_ln.bias is None
+        assert real_block.attn.k_ln.bias is None
+        assert hooked_block.attn.k_ln.bias is None
+    else:
+        assert torch.sum(real_block.attn.q_ln.weight !=  hooked_block.attn.q_ln.w) == 0
+        assert torch.sum(real_block.attn.k_ln.weight != hooked_block.attn.k_ln.w) == 0
+        assert real_block.attn.q_ln.bias is None
+        assert torch.equal(hooked_block.attn.q_ln.b, torch.zeros_like(hooked_block.attn.q_ln.b)), "The tensor is not all zeros."
+        assert real_block.attn.k_ln.bias is None
+        assert torch.equal(hooked_block.attn.k_ln.b, torch.zeros_like(hooked_block.attn.k_ln.b)), "The tensor is not all zeros."
+
+    
+    out_proj = real_block.attn.out_proj.weight
+    W_O= einops.rearrange(hooked_block.attn.W_O, "n_head d_head d_model -> d_model (n_head d_head)", n_head=hooked_block.attn.W_O.shape[0])
+    assert torch.sum(W_O !=out_proj) == 0
+    assert real_block.attn.out_proj.bias is None
+    assert torch.equal(hooked_block.attn.b_O, torch.zeros_like(hooked_block.attn.b_O)), "The tensor is not all zeros."
+
+    assert real_block.use_geom_attn == hooked_block.use_geom_attn
+    if real_block.use_geom_attn:
+        verify_identical_components(real_block.geom_attn, hooked_block.geom_attn)
+    if cfg.esm3_use_torch_layer_norm:
+        assert torch.sum(real_block.ffn[0].weight !=  hooked_block.ln2.weight) == 0
+        assert torch.sum(real_block.ffn[0].bias !=  hooked_block.ln2.bias) == 0
+    else:
+        assert torch.sum(real_block.ffn[0].weight !=  hooked_block.ln2.w) == 0
+        assert torch.sum(real_block.ffn[0].bias !=  hooked_block.ln2.b) == 0
+    assert torch.sum(real_block.ffn[1].weight !=  hooked_block.mlp.l1.weight) == 0
+    assert(real_block.ffn[1].bias is None)
+    assert(hooked_block.mlp.l1.bias is None)
+    assert torch.sum(real_block.ffn[3].weight !=  hooked_block.mlp.l2.weight) == 0
+    assert(real_block.ffn[3].bias is None)
+    assert(hooked_block.mlp.l2.bias is None)
+    print("compare_transformer_blocks- all params match")
+
+@pytest.mark.parametrize("esm3_use_torch_layer_norm", [False, True])
+def test_loading(device, esm3_use_torch_layer_norm):
+    config = SupportedESM3Config(
+    use_attn_result=False,
+    use_split_qkv_input=False,
+    use_hook_mlp_in=True,
+    use_attn_in=False,
+    esm3_output_type="all",
+    esm3_use_torch_layer_norm=esm3_use_torch_layer_norm,
+    esm3_use_torch_attention_calc=True
+)
+    esm3_hooked = HookedESM3.from_pretrained(esm_cfg=config, device=device)
+    esm3_original = ESM3_sm_open_v0(device).to(device)
+    esm3_hooked.eval()
+    esm3_original.eval()
+    cfg = esm3_hooked.cfg
+    verify_identical_components(esm3_original.encoder ,esm3_hooked.embed.embed)
+    for l in range(len(esm3_original.transformer.blocks)):
+        real_block = esm3_original.transformer.blocks[l]
+        hooked_block = esm3_hooked.blocks[l]
+        compare_transformer_blocks(real_block, hooked_block, cfg)
+    if cfg.esm3_use_torch_layer_norm:
+        assert torch.sum(esm3_original.transformer.norm.weight !=  esm3_hooked.ln_final.weight) == 0
+        assert esm3_hooked.ln_final.bias is None
+        assert esm3_original.transformer.norm.bias is None
+    else:
+        assert torch.sum(esm3_original.transformer.norm.weight !=  esm3_hooked.ln_final.w) == 0
+        assert torch.equal(esm3_hooked.ln_final.b, torch.zeros_like(esm3_hooked.ln_final.b)), "The tensor is not all zeros."
+    verify_identical_components(esm3_original.output_heads , esm3_hooked.unembed.output_heads)
+    del esm3_hooked
+    del esm3_original
+    torch.cuda.empty_cache()
+
+
+@pytest.mark.parametrize("use_attn_result", [True, False])
+@pytest.mark.parametrize("use_split_qkv_input", [True, False])
+@pytest.mark.parametrize("esm3_use_torch_layer_norm", [True, False])
+@pytest.mark.parametrize("esm3_use_torch_attention_calc", [True, False])
+@pytest.mark.parametrize(" esm3_use_org_rotary", [True, False])
+def test_full_model(
+    device,
+    esm3_use_torch_attention_calc,
+    use_attn_result,
+    use_split_qkv_input,
+    esm3_use_org_rotary,
+    esm3_use_torch_layer_norm,
+):
+    esm3_original = ESM3_sm_open_v0(device).to(device)
+    esm3_original.eval()
+    tokenizer = tokenizers = get_esm3_model_tokenizers()
+    sequence = "MKSLLLLSILAALAVAALCYESHESLESYEINPFINRRNANSFISPQQRWRAKAQERIRELNKPQYELNREACDDFKLCERYAMVYGYNAAYDRYFRQRRGAK"
+    tokens = tokenizers.sequence.encode(sequence)
+    sequence_tokens = torch.tensor(tokens, dtype=torch.int64)
+    sequence_tokens = sequence_tokens.to(device).unsqueeze(0)
+    with torch.no_grad():
+        output1 = esm3_original.forward(
+            sequence_tokens=sequence_tokens
+        )
+    del esm3_original
+    torch.cuda.empty_cache()
+    gc.collect()
+
+    config = SupportedESM3Config(
+        use_attn_result=use_attn_result,
+        use_split_qkv_input=use_split_qkv_input,
+        use_hook_mlp_in=False,
+        use_attn_in=False,
+        esm3_output_type="all",
+        esm3_use_torch_layer_norm=esm3_use_torch_layer_norm,
+        esm3_use_torch_attention_calc=esm3_use_torch_attention_calc,
+        esm3_use_org_rotary = esm3_use_org_rotary
+    )
+    esm3_hooked = HookedESM3.from_pretrained(esm_cfg=config, device=device)
+    esm3_hooked.eval()
+    with torch.no_grad():
+        output2 = esm3_hooked.forward(
+            sequence_tokens=sequence_tokens
+        )
+
+    assert torch.allclose(output1.sequence_logits, output1.sequence_logits, rtol=1.3e-6, atol=4e-5)
+
+    assert torch.allclose(output1.structure_logits, output2.structure_logits, rtol=1.3e-6, atol=4e-5)
+
+    assert torch.allclose(output1.sasa_logits, output2.sasa_logits, rtol=1.3e-6, atol=4e-5)
+
+    assert torch.allclose(output1.secondary_structure_logits, output2.secondary_structure_logits,  rtol=1.3e-6, atol=4e-5)
+
+    assert torch.allclose(output1.function_logits, output2.function_logits,  rtol=1.3e-6, atol=4e-5)
+
+    assert torch.allclose(output1.residue_logits, output2.residue_logits,  rtol=1e-5, atol=4e-5)
+
+    del esm3_hooked
+    torch.cuda.empty_cache()
+    gc.collect()
+
+@pytest.mark.parametrize("out_type", ["sequence", "structure", "secondary_structure", "sasa", "function", "residue"])
+def test_output_type(
+    device,
+    out_type,
+):
+    esm3_original = ESM3_sm_open_v0(device).to(device)
+    esm3_original.eval()
+    tokenizer = tokenizers = get_esm3_model_tokenizers()
+    sequence = "MKSLLLLSILAALAVAALCYESHESLESYEINPFINRRNANSFISPQQRWRAKAQERIRELNKPQYELNREACDDFKLCERYAMVYGYNAAYDRYFRQRRGAK"
+    tokens = tokenizers.sequence.encode(sequence)
+    sequence_tokens = torch.tensor(tokens, dtype=torch.int64)
+    sequence_tokens = sequence_tokens.to(device).unsqueeze(0)
+    with torch.no_grad():
+        output1 = esm3_original.forward(
+            sequence_tokens=sequence_tokens
+        )
+    del esm3_original
+    torch.cuda.empty_cache()
+    gc.collect()
+
+    config = SupportedESM3Config(
+        use_attn_result=False,
+        use_split_qkv_input=False,
+        use_hook_mlp_in=False,
+        use_attn_in=False,
+        esm3_output_type=out_type,
+        esm3_use_torch_layer_norm=True,
+        esm3_use_torch_attention_calc=True,
+        esm3_use_org_rotary =True
+    )
+    esm3_hooked = HookedESM3.from_pretrained(esm_cfg=config, device=device)
+    esm3_hooked.eval()
+    with torch.no_grad():
+        output2 = esm3_hooked.forward(
+            sequence_tokens=sequence_tokens
+        )
+
+    property_name = f"{out_type}_logits"
+    property_value = getattr(output1, property_name)
+    assert torch.allclose(property_value, output2, rtol=1.3e-6, atol=4e-5)
+
+    del esm3_hooked
+    torch.cuda.empty_cache()
+    gc.collect()

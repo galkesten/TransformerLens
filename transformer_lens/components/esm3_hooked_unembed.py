@@ -28,6 +28,7 @@ class HookedEsm3OutputHeads(nn.Module):
         embedding: Float[torch.Tensor, "batch pos d_model"],
         ) -> Union[
         Float[torch.Tensor, "batch pos d_vocab_out"],
+        Float[torch.Tensor, "batch pos d1 d2"],
         ESMOutput,
         None
     ]:
