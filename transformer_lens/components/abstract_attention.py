@@ -197,6 +197,7 @@ class AbstractAttention(ABC, nn.Module):
         additive_attention_mask: Optional[Float[torch.Tensor, "batch 1 1 kv_pos"]] = None,
         attention_mask: Optional[Int[torch.Tensor, "batch offset_pos"]] = None,
         position_bias: Optional[Float[torch.Tensor, "1 head_index pos kv_pos"]] = None,
+        sequence_id:Optional[Union[Float[torch.Tensor, "batch pos"], Int[torch.Tensor, "batch pos"]]] = None
     ) -> Float[torch.Tensor, "batch pos d_model"]:
         """
         shortformer_pos_embed is only used if self.cfg.positional_embedding_type == "shortformer", else defaults to None and is irrelevant. See HookedTransformerConfig for more details
@@ -253,7 +254,12 @@ class AbstractAttention(ABC, nn.Module):
             v = einops.rearrange(
                     v, "batch pos head_index d_head -> batch head_index pos d_head"
                 )
-            attn_res= F.scaled_dot_product_attention(query=q, key=k, value=v)
+            if sequence_id is not None:
+                mask_BLL = sequence_id.unsqueeze(-1) == sequence_id.unsqueeze(-2)
+                mask_BHLL = mask_BLL.unsqueeze(1)
+                attn_res= F.scaled_dot_product_attention(query=q, key=k, value=v, attn_mask=mask_BHLL)
+            else:
+                attn_res= F.scaled_dot_product_attention(query=q, key=k, value=v)
             z = self.hook_z(einops.rearrange(
                     attn_res, "batch head_index pos d_head-> batch pos head_index  d_head"
                 ))
@@ -298,6 +304,10 @@ class AbstractAttention(ABC, nn.Module):
                 )  # [batch, head_index, query_pos, key_pos]
             if additive_attention_mask is not None:
                 attn_scores += additive_attention_mask
+            if sequence_id is not None and self.cfg.model_name=="esm3":
+                mask_BLL = sequence_id.unsqueeze(-1) == sequence_id.unsqueeze(-2)
+                mask_BHLL = mask_BLL.unsqueeze(1)
+                attn_scores.masked_fill_(mask_BHLL.logical_not(), float("-inf"))
 
             attn_scores = self.hook_attn_scores(attn_scores)
             pattern = F.softmax(attn_scores, dim=-1)

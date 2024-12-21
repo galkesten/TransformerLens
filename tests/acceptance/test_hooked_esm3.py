@@ -542,6 +542,10 @@ def test_full_model(
     torch.cuda.empty_cache()
     gc.collect()
 
+#TOdo- add tests like the upper one that test other modalities!!!!!
+
+
+
 @pytest.mark.parametrize("out_type", ["sequence", "structure", "secondary_structure", "sasa", "function", "residue"])
 def test_output_type(
     device,
@@ -586,3 +590,130 @@ def test_output_type(
     del esm3_hooked
     torch.cuda.empty_cache()
     gc.collect()
+
+
+@pytest.mark.parametrize("esm3_use_torch_attention_calc", [True, False])
+def test_attention_mask(
+    device,
+    esm3_use_torch_attention_calc,
+):
+    tokenizer = tokenizers = get_esm3_model_tokenizers()
+    sequence = "MKSLLLLSILAALAVAALCYESHESLESYEINPFINRRNANSFISPQQRWRAKAQERIRELNKPQYELNREACDDFKLCERYAMVYGYNAAYDRYFRQRRGAK"
+    tokenizers = get_esm3_model_tokenizers()
+    sequence1 = "MKSLLLLSILAALAVAALCYESHESLESYEINPFINRRNANSFISPQQRWRAKAQERIRELNKPQYELNREACDDFKLCERYAMVYGYNAAYDRYFRQRRGAK"
+    sequence2= "MKTLLLTLLVVTIVCLDLGYTLECHNQQSSQTPTTTGCSGGETNCYKKRWRDHRGYRTERGCGCPSVKNGIEINCCTTDRCNN"
+    tokenizer_res = tokenizers.sequence([sequence1, sequence2], return_tensors="pt", padding=True)
+    sequence_tokens=tokenizer_res['input_ids'].to(device)
+    sequence_id = tokenizer_res['attention_mask'].to(device)
+
+
+    esm3_original = ESM3_sm_open_v0(device).to(device)
+    esm3_original.eval()
+
+    with torch.no_grad():
+        output1 = esm3_original.forward(
+            sequence_tokens=sequence_tokens, sequence_id= sequence_id
+        )
+    del esm3_original
+    torch.cuda.empty_cache()
+    gc.collect()
+
+    config = SupportedESM3Config(
+        use_attn_result=False,
+        use_split_qkv_input=True,
+        use_hook_mlp_in=True,
+        use_attn_in=False,
+        esm3_output_type="all",
+        esm3_use_torch_layer_norm=True,
+        esm3_use_torch_attention_calc=esm3_use_torch_attention_calc,
+        esm3_use_org_rotary = True
+    )
+    esm3_hooked = HookedESM3.from_pretrained(esm_cfg=config, device=device)
+    esm3_hooked.eval()
+    with torch.no_grad():
+        output2 = esm3_hooked.forward(
+            sequence_tokens=sequence_tokens, sequence_id= sequence_id
+        )
+
+    assert torch.allclose(output1.sequence_logits, output1.sequence_logits, rtol=1.3e-6, atol=4e-5)
+
+    assert torch.allclose(output1.structure_logits, output2.structure_logits, rtol=1.3e-6, atol=4e-5)
+
+    assert torch.allclose(output1.sasa_logits, output2.sasa_logits, rtol=1.3e-6, atol=4e-5)
+
+    assert torch.allclose(output1.secondary_structure_logits, output2.secondary_structure_logits,  rtol=1.3e-6, atol=4e-5)
+
+    assert torch.allclose(output1.function_logits, output2.function_logits,  rtol=1e-5, atol=1e-4)
+    assert torch.allclose(output1.residue_logits, output2.residue_logits,  rtol=1e-5, atol=1e-4)
+
+    del esm3_hooked
+    torch.cuda.empty_cache()
+    gc.collect()
+
+
+def test_masked_loss(
+    device):
+    esm3_original = ESM3_sm_open_v0(device).to(device)
+    esm3_original.eval()
+    tokenizers = get_esm3_model_tokenizers()
+
+    # Input sequence
+    sequence = "MKSLLLLSILAALAVAALCYESHESLESYEINPFINRRNANSFISPQQRWRAKAQERIRELNKPQYELNREACDDFKLCERYAMVYGYNAAYDRYFRQRRGAK"
+    tokens = tokenizers.sequence.encode(sequence)
+    sequence_tokens = torch.tensor(tokens, dtype=torch.int64)
+    sequence_tokens = sequence_tokens.to(device).unsqueeze(0)
+
+    # Randomly mask tokens
+    mask_token_id = tokenizers.sequence.mask_token_id
+    mask_prob = 0.15  # 15% of tokens will be masked
+    random_mask = torch.bernoulli(torch.full(sequence_tokens.shape, mask_prob)).bool().to(device)
+    masked_sequence = sequence_tokens.clone()
+    masked_sequence[random_mask] = mask_token_id  # Replace with <mask>
+
+    with torch.no_grad():
+        # Get logits and calculate loss for original model
+        output_original = esm3_original.forward(sequence_tokens=masked_sequence)
+        logits_original = output_original.sequence_logits
+        target_original = sequence_tokens[random_mask]
+        loss_original = torch.nn.functional.cross_entropy(
+            logits_original[random_mask], target_original
+        )
+
+    del esm3_original
+    torch.cuda.empty_cache()
+    gc.collect()
+
+    config = SupportedESM3Config(
+        use_attn_result=False,
+        use_split_qkv_input=True,
+        use_hook_mlp_in=True,
+        use_attn_in=False,
+        esm3_output_type="all",
+        esm3_use_torch_layer_norm=True,
+        esm3_use_torch_attention_calc=True,
+        esm3_use_org_rotary=True
+    )
+    esm3_hooked = HookedESM3.from_pretrained(esm_cfg=config, device=device)
+    esm3_hooked.eval()
+
+    with torch.no_grad():
+        # Get logits and calculate loss for hooked model
+        output_hooked = esm3_hooked.forward(sequence_tokens=masked_sequence)
+        logits_hooked = output_hooked.sequence_logits
+        target_hooked = sequence_tokens[random_mask]
+        loss_hooked = torch.nn.functional.cross_entropy(
+            logits_hooked[random_mask], target_hooked
+        )
+    print(loss_original)
+    print(loss_hooked)
+    print(loss_original-loss_hooked)
+
+    # Assert losses are approximately equal
+    assert torch.allclose(loss_original, loss_hooked, rtol=0.0, atol=4e-5)
+
+    del esm3_hooked
+    torch.cuda.empty_cache()
+    gc.collect()
+
+
+#to do- check other track losses!

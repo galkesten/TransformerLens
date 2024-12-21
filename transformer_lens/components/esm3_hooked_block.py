@@ -119,7 +119,10 @@ class HookedEsm3UnifiedTransformerBlock(nn.Module):
                 key_input=self.ln1(key_input),
                 value_input=self.ln1(value_input),
                 past_kv_cache_entry=None,
+                additive_attention_mask=None,
                 attention_mask=None,
+                sequence_id=sequence_id,
+                position_bias=None
             )
         )  # [batch, pos, d_model]
         scaled_attn_out = attn_out / self.cfg.esm3_scaling_factor
