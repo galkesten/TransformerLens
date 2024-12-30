@@ -31,14 +31,14 @@
         sentencepiece="*"
         torch=[
             {platform="!=linux", version=">=1.10,!=2.0,!=2.1.0"}, # Pin >=2.1.1 on Apple devices due to known MPS errors on 2.1.0
-            {platform="linux", version=">=1.10"},                 # We can use any torch version on Linux (e.g colab)
+            {platform="linux", version=">=1.10", source = "pytorch"},                 # We can use any torch version on Linux (e.g colab)
         ]
         tqdm=">=4.64.1"
         transformers=">=4.37.2"
         typing-extensions="*"
         wandb=">=0.13.5"
         typeguard = "^4.2"
-	esm = { version = "*", python = ">=3.10"} 
+	    esm = { version = "3.1.1", python = ">=3.10"} 
     [tool.poetry.group]
         [tool.poetry.group.dev.dependencies]
             black="^23.3.0"
@@ -68,6 +68,12 @@
             sphinx-autobuild={version=">=2021.3.14"}
             sphinxcontrib-napoleon={version=">=0.7"}
             tabulate={version=">=0.9.0"}
+
+
+[[tool.poetry.source]]
+name = "pytorch"
+url = "https://download.pytorch.org/whl/cu121"
+priority = "explicit"
 
 [tool.pytest]
     [tool.pytest.ini_options]

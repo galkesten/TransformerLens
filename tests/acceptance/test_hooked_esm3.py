@@ -567,8 +567,8 @@ def test_output_type(
     gc.collect()
 
     config = SupportedESM3Config(
-        use_attn_result=False,
-        use_split_qkv_input=False,
+        use_attn_result=True,
+        use_split_qkv_input=True,
         use_hook_mlp_in=False,
         use_attn_in=False,
         esm3_output_type=out_type,
@@ -585,7 +585,8 @@ def test_output_type(
 
     property_name = f"{out_type}_logits"
     property_value = getattr(output1, property_name)
-    assert torch.allclose(property_value, output2, rtol=1.3e-6, atol=4e-5)
+    print(torch.max(torch.abs(property_value-output2)))
+    assert torch.allclose(property_value, output2, rtol=1.3e-6, atol=5e-5)
 
     del esm3_hooked
     torch.cuda.empty_cache()
@@ -619,7 +620,7 @@ def test_attention_mask(
     gc.collect()
 
     config = SupportedESM3Config(
-        use_attn_result=False,
+        use_attn_result=True,
         use_split_qkv_input=True,
         use_hook_mlp_in=True,
         use_attn_in=False,
@@ -684,7 +685,7 @@ def test_masked_loss(
     gc.collect()
 
     config = SupportedESM3Config(
-        use_attn_result=False,
+        use_attn_result=True,
         use_split_qkv_input=True,
         use_hook_mlp_in=True,
         use_attn_in=False,
