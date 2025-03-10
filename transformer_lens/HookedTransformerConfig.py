@@ -276,6 +276,7 @@ class HookedTransformerConfig:
     esm3_use_torch_layer_norm:bool=False
     esm3_use_org_rotary:bool=False
     esm3_use_torch_attention_calc:bool=False
+    esm3_capture_activations_before_normalization:bool=True
     def __post_init__(self):
         if self.n_heads == -1:
             self.n_heads = self.d_model // self.d_head

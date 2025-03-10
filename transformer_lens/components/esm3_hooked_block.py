@@ -69,7 +69,6 @@ class HookedEsm3UnifiedTransformerBlock(nn.Module):
         self.hook_resid_mid = HookPoint()  # [batch, pos, d_model]
         self.hook_resid_post = HookPoint()  # [batch, pos, d_model]
         self.hook_resid_mid_geo = HookPoint()
-        self.hook_post_layer_norm=HookPoint()
 
     def forward(
         self,
@@ -110,12 +109,8 @@ class HookedEsm3UnifiedTransformerBlock(nn.Module):
             key_input = attn_in
             value_input = attn_in
 
-        attn_out = self.hook_attn_out(
-            # hook the residual stream states that are used to calculate the
-            # queries, keys and values, independently.
-            # Then take the layer norm of these inputs, and pass these to the attention module.
-            self.attn(
-                query_input=self.hook_post_layer_norm(self.ln1(query_input)),
+        attn_out = self.attn(
+                query_input=self.ln1(query_input),
                 key_input=self.ln1(key_input),
                 value_input=self.ln1(value_input),
                 past_kv_cache_entry=None,
@@ -123,22 +118,35 @@ class HookedEsm3UnifiedTransformerBlock(nn.Module):
                 attention_mask=None,
                 sequence_id=sequence_id,
                 position_bias=None
-            )
-        )  # [batch, pos, d_model]
+            ) # [batch, pos, d_model]
+
+        if self.cfg.esm3_capture_activations_before_normalization:
+            attn_out = self.hook_attn_out(attn_out)
         scaled_attn_out = attn_out / self.cfg.esm3_scaling_factor
-        resid_mid = self.hook_resid_mid(resid_pre +scaled_attn_out)  # [batch, pos, d_model]
+        if not self.cfg.esm3_capture_activations_before_normalization:
+            scaled_attn_out = self.hook_attn_out(scaled_attn_out)
+
+        resid_mid = self.hook_resid_mid(resid_pre + scaled_attn_out)  # [batch, pos, d_model]
 
         if self.use_geom_attn:
             geo_attn_in = self.hook_geo_attn_in(resid_mid.clone())
-            geo_attn_out =  self.hook_geo_attn_out(self.geom_attn(geo_attn_in, frames, frames_mask, sequence_id, chain_id))
+            geo_attn_out =  self.geom_attn(geo_attn_in, frames, frames_mask, sequence_id, chain_id)
+            if self.cfg.esm3_capture_activations_before_normalization:
+                geo_attn_out = self.hook_geo_attn_out(geo_attn_out)
             scaled_geo_attn = geo_attn_out/self.cfg.esm3_scaling_factor
+            if not self.cfg.esm3_capture_activations_before_normalization:
+                scaled_geo_attn = self.hook_geo_attn_out(scaled_geo_attn)
             resid_mid = self.hook_resid_mid_geo(resid_mid + scaled_geo_attn)
 
         mlp_in = (
                 resid_mid if not self.cfg.use_hook_mlp_in else self.hook_mlp_in(resid_mid.clone())
             )
         normalized_resid_mid = self.ln2(mlp_in)
-        mlp_out = self.hook_mlp_out(self.mlp(normalized_resid_mid))
+        mlp_out = self.mlp(normalized_resid_mid)
+        if self.cfg.esm3_capture_activations_before_normalization:
+            mlp_out = self.hook_mlp_out(mlp_out)
         scaled_mlp = mlp_out/self.cfg.esm3_scaling_factor
+        if not self.cfg.esm3_capture_activations_before_normalization:
+            scaled_mlp = self.hook_mlp_out(scaled_mlp)
         resid_post = self.hook_resid_post(resid_mid+scaled_mlp)  # [batch, pos, d_model]
         return resid_post

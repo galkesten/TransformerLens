@@ -51,7 +51,8 @@ class SupportedESM3Config:
         esm3_output_type: Optional[str] = None,
         esm3_use_torch_layer_norm:bool = False,
         esm3_use_org_rotary:bool = True,
-        esm3_use_torch_attention_calc:bool = False
+        esm3_use_torch_attention_calc:bool = False,
+        esm3_capture_activations_before_normalization:bool=True
     ):
         self.use_attn_result = use_attn_result
         self.use_split_qkv_input = use_split_qkv_input
@@ -61,6 +62,7 @@ class SupportedESM3Config:
         self.esm3_use_torch_layer_norm = esm3_use_torch_layer_norm
         self.esm3_use_org_rotary=esm3_use_org_rotary
         self.esm3_use_torch_attention_calc=esm3_use_torch_attention_calc
+        self.esm3_capture_activations_before_normalization=esm3_capture_activations_before_normalization
 
     seed: Optional[int] = None
 class HookedESM3(HookedRootModule):
@@ -438,7 +440,8 @@ class HookedESM3(HookedRootModule):
         esm3_v_heads = 256,
         esm3_use_torch_layer_norm= esm_cfg.esm3_use_torch_layer_norm,
         esm3_use_org_rotary=esm_cfg.esm3_use_org_rotary,
-        esm3_use_torch_attention_calc=esm_cfg.esm3_use_torch_attention_calc
+        esm3_use_torch_attention_calc=esm_cfg.esm3_use_torch_attention_calc,
+        esm3_capture_activations_before_normalization=esm_cfg.esm3_capture_activations_before_normalization
         )
         
         state_dict = cls.get_state_dict(device, cfg)
