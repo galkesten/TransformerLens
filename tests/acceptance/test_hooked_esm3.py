@@ -308,7 +308,8 @@ def assign_params_to_original_transformer_block(block:UnifiedTransformerBlock, a
 @pytest.mark.parametrize("use_hook_mlp_in", [False, True])
 @pytest.mark.parametrize("use_split_qkv_input", [False, True])
 @pytest.mark.parametrize("residue_scaling_factor", [1.0, math.sqrt(48 / 36)])
-def test_compare_unified_and_hooked_transformer_blocks(bias, residue_scaling_factor, use_attn_in, use_hook_mlp_in, use_split_qkv_input):
+@pytest.mark.parametrize("esm3_capture_activations_before_normalization", [False, True])
+def test_compare_unified_and_hooked_transformer_blocks(bias, residue_scaling_factor, use_attn_in, use_hook_mlp_in, use_split_qkv_input, esm3_capture_activations_before_normalization):
     d_model = 512
     n_heads = 8
     d_head = d_model // n_heads
@@ -357,7 +358,8 @@ def test_compare_unified_and_hooked_transformer_blocks(bias, residue_scaling_fac
     use_attn_in = use_attn_in,
     use_hook_mlp_in = use_hook_mlp_in,
     use_split_qkv_input= use_split_qkv_input,
-    esm3_scaling_factor=residue_scaling_factor
+    esm3_scaling_factor=residue_scaling_factor,
+    esm3_capture_activations_before_normalization=esm3_capture_activations_before_normalization
 )
     hooked_block:HookedEsm3UnifiedTransformerBlock = HookedEsm3UnifiedTransformerBlock(cfg, block_index=0)
     assign_params_to_hooked_esm3_transformer_block(hooked_block,attention_fake_params, mlp_fake_params, bias, cfg)
@@ -486,6 +488,7 @@ def test_loading(device, esm3_use_torch_layer_norm):
 @pytest.mark.parametrize("esm3_use_torch_layer_norm", [True, False])
 @pytest.mark.parametrize("esm3_use_torch_attention_calc", [True, False])
 @pytest.mark.parametrize(" esm3_use_org_rotary", [True, False])
+@pytest.mark.parametrize("esm3_capture_activations_before_normalization", [False, True])
 def test_full_model(
     device,
     esm3_use_torch_attention_calc,
@@ -493,6 +496,7 @@ def test_full_model(
     use_split_qkv_input,
     esm3_use_org_rotary,
     esm3_use_torch_layer_norm,
+    esm3_capture_activations_before_normalization
 ):
     esm3_original = ESM3_sm_open_v0(device).to(device)
     esm3_original.eval()
@@ -517,7 +521,8 @@ def test_full_model(
         esm3_output_type="all",
         esm3_use_torch_layer_norm=esm3_use_torch_layer_norm,
         esm3_use_torch_attention_calc=esm3_use_torch_attention_calc,
-        esm3_use_org_rotary = esm3_use_org_rotary
+        esm3_use_org_rotary = esm3_use_org_rotary,
+        esm3_capture_activations_before_normalization=esm3_capture_activations_before_normalization
     )
     esm3_hooked = HookedESM3.from_pretrained(esm_cfg=config, device=device)
     esm3_hooked.eval()
@@ -598,8 +603,6 @@ def test_attention_mask(
     device,
     esm3_use_torch_attention_calc,
 ):
-    tokenizer = tokenizers = get_esm3_model_tokenizers()
-    sequence = "MKSLLLLSILAALAVAALCYESHESLESYEINPFINRRNANSFISPQQRWRAKAQERIRELNKPQYELNREACDDFKLCERYAMVYGYNAAYDRYFRQRRGAK"
     tokenizers = get_esm3_model_tokenizers()
     sequence1 = "MKSLLLLSILAALAVAALCYESHESLESYEINPFINRRNANSFISPQQRWRAKAQERIRELNKPQYELNREACDDFKLCERYAMVYGYNAAYDRYFRQRRGAK"
     sequence2= "MKTLLLTLLVVTIVCLDLGYTLECHNQQSSQTPTTTGCSGGETNCYKKRWRDHRGYRTERGCGCPSVKNGIEINCCTTDRCNN"
