@@ -50,7 +50,8 @@ def move_to_and_update_config(
         "transformer_lens.HookedTransformer",
         "transformer_lens.HookedEncoder",
         "transformer_lens.HookedEncoderDecoder",
-        "transformer_lens.HookedESM3"
+        "transformer_lens.HookedESM3",
+        "transformer_lens.HookedESMC"
     ],
     device_or_dtype: Union[torch.device, str, torch.dtype],
     print_details=True,
