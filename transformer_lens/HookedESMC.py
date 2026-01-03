@@ -26,7 +26,7 @@ from esm.utils.constants.models import (
     ESMC_600M,
     ESMC_300M
 )
-
+from esm.pretrained import ESMC_600M_202412, ESMC_300M_202412
 import math
 from esm.tokenization import get_esmc_model_tokenizers 
 from transformer_lens.pretrained.weight_conversions import convert_esmc_weights
@@ -76,11 +76,11 @@ class HookedESMC(HookedRootModule):
             cfg = HookedTransformerConfig(**cfg)
         elif isinstance(cfg, str):
             raise ValueError(
-                "Please pass in a config dictionary or HookedTransformerConfig object. If you want to load a pretrained model, use HookedESM3.from_pretrained() instead."
+                "Please pass in a config dictionary or HookedTransformerConfig object. If you want to load a pretrained model, use HookedESMC.from_pretrained() instead."
             )
         self.cfg = cfg
 
-        assert self.cfg.n_devices == 1, "Multiple devices not supported for HookedESM3"
+        assert self.cfg.n_devices == 1, "Multiple devices not supported for HookedESMC"
         self.tokenizer = tokenizer
 
         self.embed = nn.Embedding(64, self.cfg.d_model)
@@ -153,7 +153,7 @@ class HookedESMC(HookedRootModule):
         resid = self.hook_embed(self.embed(sequence_tokens))
         
         if sequence_id is None:
-            sequence_id = sequence_tokens != self.tokenizer.pad_token_id
+            sequence_id = (sequence_tokens != self.tokenizer.pad_token_id).long()
             B, L = resid.shape[:2]
             assert sequence_id.shape == (B, L)
             sequence_id = sequence_id.to(resid.device)
@@ -229,10 +229,13 @@ class HookedESMC(HookedRootModule):
     
     @classmethod
     def get_state_dict(cls, device: str | torch.device | None, cfg: HookedTransformerConfig) -> dict[str, torch.Tensor]:
+        # Convert device string to torch.device if needed
+        if device is not None and isinstance(device, str):
+            device = torch.device(device)
         if cfg.model_name == "esmc_300m":
-            esmc = ESMC.from_pretrained(model_name="esmc_300m", device=device)  # type: ignore[arg-type]
+            esmc = ESMC_300M_202412(device=device)  # type: ignore[arg-type]
         elif cfg.model_name == "esmc_600m":
-            esmc = ESMC.from_pretrained(model_name="esmc_600m", device=device)  # type: ignore[arg-type]
+            esmc = ESMC_600M_202412(device=device)  # type: ignore[arg-type]
         else:
             raise ValueError(f"Model name {cfg.model_name} is not supported for esmc.")
         for param in esmc.parameters():
@@ -247,7 +250,7 @@ class HookedESMC(HookedRootModule):
         device: str | torch.device | None = None,
         move_to_device: bool = True,
         dtype: torch.dtype = torch.float32,  
-    ) -> HookedESM3:
+    ) -> HookedESMC:
 
         logging.warning(
             "Please notice the licsence - todo- add license"

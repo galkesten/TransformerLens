@@ -304,7 +304,7 @@ class AbstractAttention(ABC, nn.Module):
                 )  # [batch, head_index, query_pos, key_pos]
             if additive_attention_mask is not None:
                 attn_scores += additive_attention_mask
-            if sequence_id is not None and self.cfg.model_name=="esm3":
+            if sequence_id is not None and ((self.cfg.model_name=="esm3") or ("esmc" in self.cfg.model_name)):
                 mask_BLL = sequence_id.unsqueeze(-1) == sequence_id.unsqueeze(-2)
                 mask_BHLL = mask_BLL.unsqueeze(1)
                 attn_scores.masked_fill_(mask_BHLL.logical_not(), float("-inf"))
@@ -333,7 +333,7 @@ class AbstractAttention(ABC, nn.Module):
                 w = einops.rearrange(
                     self.W_O, "head_index d_head d_model -> d_model (head_index d_head)"
                 )
-                bias= None if self.cfg.esm3_bias==False and self.cfg.model_name=="esm3" else self.b_O
+                bias= None if self.cfg.esm3_bias==False and ((self.cfg.model_name=="esm3") or ("esmc" in self.cfg.model_name)) else self.b_O
                 out = F.linear(
                     z.reshape(z.shape[0], z.shape[1], self.cfg.d_head * self.cfg.n_heads),
                     w,

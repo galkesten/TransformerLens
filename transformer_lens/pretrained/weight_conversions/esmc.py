@@ -52,10 +52,8 @@ def convert_esmc_weights(esmc: ESMC, cfg: HookedTransformerConfig):
 
     if cfg.esm3_use_torch_layer_norm:
         state_dict["ln_final.weight"] = esmc.transformer.norm.weight
-        state_dict["ln_final.bias"] = esmc.transformer.norm.bias
     else:
         state_dict["ln_final.w"] = esmc.transformer.norm.weight
-        state_dict["ln_final.b"] = esmc.transformer.norm.bias
     
     # sequence_head maps to unembed (RegressionHead)
     sequence_head_dict = {
