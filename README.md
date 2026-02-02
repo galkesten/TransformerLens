@@ -5,8 +5,8 @@
 This is a research fork of [TransformerLens](https://github.com/TransformerLensOrg/TransformerLens), adding support for EvolutionaryScale's protein language models (ESM-3 and ESMC) within the `HookedTransformer` framework.
 
 ### Supported Models:
-* **ESMC 300M**: Licensed under the [EvolutionaryScale Cambrian Open License](./LICENSE.ESM_OPEN).
-* **ESM-3 (Open weights) & ESMC 600M**: Licensed under the [EvolutionaryScale Cambrian Non-Commercial License](./LICENSE.ESM).
+* **ESMC 300M**: Licensed under the [EvolutionaryScale Cambrian Open License](https://www.evolutionaryscale.ai/policies/cambrian-open-license-agreement).
+* **ESM-3 (Open weights) & ESMC 600M**: Licensed under the [EvolutionaryScale Cambrian Non-Commercial License](https://www.evolutionaryscale.ai/policies/cambrian-non-commercial-license-agreement).
 
 ---
 
@@ -15,13 +15,9 @@ This is a research fork of [TransformerLens](https://github.com/TransformerLensO
 This project is multi-licensed to reflect the different requirements of its components:
 
 1. **TransformerLens Core**: All original library code, infrastructure, and non-ESM related models are licensed under the [MIT License](./LICENSE).
-2. **ESMC 300M Integration**: All code and model usage related to ESMC 300M (including `HookedESMC` for the 300M variant) are subject to the [EvolutionaryScale Cambrian Open License](./LICENSE.ESM_OPEN).
-3. **ESM-3 & ESMC 600M Integration**: All code and model usage related to ESM-3 and ESMC 600M (including `HookedESM3` and `HookedESMC` for the 600M variant) are subject to the [EvolutionaryScale Cambrian Non-Commercial License](./LICENSE.ESM). **Usage of these specific models is strictly restricted to Non-Commercial Purposes only.**
+2. **ESMC 300M Integration**: All code and model usage related to ESMC 300M (including `HookedESMC` for the 300M variant) are subject to the [EvolutionaryScale Cambrian Open License](https://www.evolutionaryscale.ai/policies/cambrian-open-license-agreement).
+3. **ESM-3 & ESMC 600M Integration**: All code and model usage related to ESM-3 and ESMC 600M (including `HookedESM3` and `HookedESMC` for the 600M variant) are subject to the [EvolutionaryScale Cambrian Non-Commercial License](https://www.evolutionaryscale.ai/policies/cambrian-non-commercial-license-agreement). **Usage of these specific models is strictly restricted to Non-Commercial Purposes only.**
 
-**Attribution Requirements:**
-* Any research, software, or media using this fork must prominently display: **"Built with ESM"**.
-* If using **ESMC 300M** for drug discovery or biological target identification, you must also include the attribution: **"Generated with ESM"**.
-* Note: Drug discovery and target identification are NOT permitted under the Non-Commercial license for ESM-3 and ESMC 600M.
 
 ---
 
