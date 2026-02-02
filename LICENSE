@@ -19,3 +19,14 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+
+
+
+ADDITIONAL LICENSE INFORMATION:
+This project also incorporates components from EvolutionaryScale (ESM-3). 
+These specific components are NOT licensed under MIT and are instead subject 
+to the "EvolutionaryScale Cambrian Non-Commercial License Agreement". 
+
+See the LICENSE.ESM file in this repository for the full license text.
+Built with ESM.
