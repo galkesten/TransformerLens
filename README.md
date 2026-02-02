@@ -36,10 +36,29 @@ If you use this fork in your research, please cite both the original Transformer
     year = {2022},
     howpublished = {\url{https://github.com/TransformerLensOrg/TransformerLens}},
 }
-```BibTeX
-@misc{evolutionaryscale2024esm3,
-    title={ESM3: Simulating 500 million years of evolution with a language model},
-    author={EvolutionaryScale},
-    year={2024},
-    url={[https://www.evolutionaryscale.ai/blog/esm3-simulating-500-million-years-of-evolution-with-a-language-model](https://www.evolutionaryscale.ai/blog/esm3-simulating-500-million-years-of-evolution-with-a-language-model)}
+@article {hayes2024simulating,
+	author = {Hayes, Thomas and Rao, Roshan and Akin, Halil and Sofroniew, Nicholas J. and Oktay, Deniz and Lin, Zeming and Verkuil, Robert and Tran, Vincent Q. and Deaton, Jonathan and Wiggert, Marius and Badkundri, Rohil and Shafkat, Irhum and Gong, Jun and Derry, Alexander and Molina, Raul S. and Thomas, Neil and Khan, Yousuf A. and Mishra, Chetan and Kim, Carolyn and Bartie, Liam J. and Nemeth, Matthew and Hsu, Patrick D. and Sercu, Tom and Candido, Salvatore and Rives, Alexander},
+	title = {Simulating 500 million years of evolution with a language model},
+	year = {2025},
+	doi = {10.1126/science.ads0018},
+	URL = {http://dx.doi.org/10.1126/science.ads0018},
+	journal = {Science}
+}
+
+@misc{esm2024cambrian,
+  author = {{ESM Team}},
+  title = {ESM Cambrian: Revealing the mysteries of proteins with unsupervised learning},
+  year = {2024},
+  publisher = {EvolutionaryScale Website},
+  url = {https://evolutionaryscale.ai/blog/esm-cambrian},
+  urldate = {2024-12-04}
+}
+
+@software{evolutionaryscale_2024,
+  author = {{EvolutionaryScale Team}},
+  title = {evolutionaryscale/esm},
+  year = {2024},
+  publisher = {Zenodo},
+  doi = {10.5281/zenodo.14219303},
+  URL = {https://doi.org/10.5281/zenodo.14219303}
 }
