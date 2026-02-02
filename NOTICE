@@ -1,0 +1,10 @@
+NOTICE
+
+- The ESMC 300M Model and its "Hooked" implementations (HookedESMC) are licensed under the EvolutionaryScale Cambrian Open License Agreement.
+- The ESM-3 and ESMC 600M Models and their "Hooked" implementations (HookedESM3, HookedESMC) are licensed under the EvolutionaryScale Cambrian Non-Commercial License Agreement.
+
+Built with ESM.
+
+This project incorporates a derivative work of ESM-3 and ESMC models, specifically implementing "Hooked" versions (e.g., HookedESM3, HookedESMC) for mechanistic interpretability research.
+
+This project also incorporates code from TransformerLens, which is licensed under the MIT License. This includes all core library components, infrastructure, and non-ESM related models.
