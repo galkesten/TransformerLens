@@ -1,3 +1,6 @@
+# This file is a derivative work of TransformerLens (MIT Licensed),
+# integrated with ESM-specific logic (EvolutionaryScale Cambrian Open License).
+# See LICENSE, LICENSE.ESM_OPEN, and NOTICE for full attribution details
 import math
 from abc import ABC
 from typing import Dict, Optional, Tuple, Union
@@ -23,7 +26,7 @@ if is_bitsandbytes_available():
 
 from esm.layers.rotary import RotaryEmbedding
 
-#To do - add support for mask for sequence_id for esm3
+
 class AbstractAttention(ABC, nn.Module):
     alibi: Union[torch.Tensor, None]
 

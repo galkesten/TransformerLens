@@ -1,7 +1,7 @@
-"""Hooked ESMC.
-All based on this code - https://github.com/evolutionaryscale/esm/blob/main/esm/models/esmc.py
-"""
-
+# Based on ESMC (https://github.com/evolutionaryscale/esm). 
+# Code is licensed under the EvolutionaryScale Cambrian Open License.
+# Note: ESMC 300M weights are under the Open License, while ESMC 600M weights 
+# are subject to the Non-Commercial License. See LICENSE.ESM/ESM_OPEN for details.
 from __future__ import annotations
 
 import logging
@@ -253,14 +253,17 @@ class HookedESMC(HookedRootModule):
     ) -> HookedESMC:
 
         logging.warning(
-            "Please notice the licsence - todo- add license"
-            "Support for ESMC in TransformerLens is currently experimental, until such a time when it has feature "
-            "parity with HookedTransformer and has been tested on real research tasks. Until then, backward "
-            "compatibility is not guaranteed. Please see the docs for information on the limitations of the current "
-            "implementation."
             "\n"
-            "If using ESMC for interpretability research, keep in mind that ESMC has some significant architectural "
-            "differences to Language transformers like GPT."
+            "LICENSE NOTICE:\n"
+            f"Accessing {model_name} weights via HookedESMC. \n"
+            "- ESMC 300M weights are under the Cambrian Open License.\n"
+            "- ESMC 600M weights are under the Cambrian Non-Commercial License (Research Only).\n"
+            "Code is subject to the Cambrian Open License.\n"
+            "\n"
+            "IMPLEMENTATION NOTE:\n"
+            "This is a specialized fork of TransformerLens adding ESMC support. Currently, only \n"
+            "basic features are implemented. Many standard HookedTransformer features are \n"
+            "unsupported."
         )
 
         assert dtype in [torch.float32, torch.float64], "dtype is not supported"

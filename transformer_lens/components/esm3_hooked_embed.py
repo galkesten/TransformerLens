@@ -1,7 +1,9 @@
-"""Hooked Transformer ESM3 Hooked Embed Component.
-//Taken from here : https://github.com/evolutionaryscale/esm/blob/main/esm/models/esm3.py#L69
-//To do - add license
-This module contains all the component :class:`ESM3HookedEmbed`.
+"""Hooked ESM3 Hooked Embed Component.
+Based on the original implementation by EvolutionaryScale:
+https://github.com/evolutionaryscale/esm/blob/main/esm/models/esm3.py
+
+Licensed under the EvolutionaryScale Cambrian Open License (Code).
+See LICENSE.ESM_OPEN and LICENSE (MIT) for details.
 """
 from typing import Dict, Optional, Union
 

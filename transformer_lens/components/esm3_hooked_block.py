@@ -1,7 +1,7 @@
-"""ESM3 Unified Transformer Block Component.
-Based on this code. copyright : https://github.com/evolutionaryscale/esm/blob/main/esm/layers/blocks.py 
-//To do : add license 
-//To do - add geometric attention
+"""Hooked ESM3 Unified Transformer Block Component.
+Based on: https://github.com/evolutionaryscale/esm/blob/main/esm/layers/blocks.py
+Code is licensed under the EvolutionaryScale Cambrian Open License.
+See LICENSE.ESM_OPEN and LICENSE (MIT) for details.
 """
 
 from typing import Callable, Dict, Optional, Union

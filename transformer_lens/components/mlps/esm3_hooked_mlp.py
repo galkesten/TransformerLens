@@ -14,10 +14,14 @@ from transformer_lens.hook_points import HookPoint
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.utilities.addmm import batch_addmm
 
-#Taken from: 
-#https://github.com/evolutionaryscale/esm/blob/main/esm/layers/blocks.py
-#To do - add license
-#To do- understand how dmlp should be used here
+"""
+Based on the original implementation by EvolutionaryScale:
+https://github.com/evolutionaryscale/esm/blob/main/esm/layers/blocks.py
+
+Licensed under the EvolutionaryScale Cambrian Open License (Code).
+See LICENSE.ESM_OPEN and LICENSE (MIT) for details.
+"""
+
 def swiglu_correction_fn(expansion_ratio: float, d_model: int) -> int:
     # set hidden dimesion to nearest multiple of 256 after expansion ratio
     return int(((expansion_ratio * d_model) + 255) // 256 * 256)

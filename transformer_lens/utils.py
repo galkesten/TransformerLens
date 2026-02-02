@@ -193,8 +193,11 @@ def solu(input: Float[torch.Tensor, "batch pos d_mlp"]) -> Float[torch.Tensor, "
 
 def swiglu(input: Float[torch.Tensor, "batch pos d_mlp"]) -> Float[torch.Tensor, "batch pos d_mlp_half"]:
     """
-    Taken from https://github.com/evolutionaryscale/esm/blob/main/esm/layers/blocks.py 
-    To do - add copyright
+    Based on the original implementation by EvolutionaryScale:
+    https://github.com/evolutionaryscale/esm/blob/main/esm/layers/blocks.py
+
+    Licensed under the EvolutionaryScale Cambrian Open License (Code).
+    See LICENSE.ESM_OPEN and LICENSE (MIT) for details.
 
     Assumption:
     d_mlp_half = d_mlp // 2

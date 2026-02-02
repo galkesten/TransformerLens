@@ -1,6 +1,7 @@
-"""Hooked ESM3.
-All based on this code - https://github.com/evolutionaryscale/esm/blob/main/esm/models/esm3.py#L69
-"""
+#Based on ESM-3 (https://github.com/evolutionaryscale/esm). 
+# Code only is licensed under the EvolutionaryScale Cambrian Open License.
+# Note: Using ESM-3 weights via HookedESM3 is subject to the 
+# EvolutionaryScale Cambrian Non-Commercial License. See LICENSE.ESM for details.
 
 from __future__ import annotations
 
@@ -384,14 +385,15 @@ class HookedESM3(HookedRootModule):
         Unlike HookedTransformer, this does not yet do any preprocessing on the model
         We can ony load the open version."""
         logging.warning(
-            "Please notice the licsence - todo- add license"
-            "Support for ESM3 in TransformerLens is currently experimental, until such a time when it has feature "
-            "parity with HookedTransformer and has been tested on real research tasks. Until then, backward "
-            "compatibility is not guaranteed. Please see the docs for information on the limitations of the current "
-            "implementation."
             "\n"
-            "If using ESM3 for interpretability research, keep in mind that ESM3 has some significant architectural "
-            "differences to Language transformers like GPT."
+            "LICENSE NOTICE:\n"
+            "Accessing ESM-3 weights via HookedESM3 is subject to the EvolutionaryScale Cambrian \n"
+            "Non-Commercial License (Research Use Only). Code is subject to the Cambrian Open License.\n"
+            "\n"
+            "IMPLEMENTATION NOTE:\n"
+            "This is a specialized fork of TransformerLens adding ESM-3 support. Currently, only \n"
+            "basic features are implemented. Many standard HookedTransformer features are \n"
+            "unsupported, and backward compatibility is not guaranteed."
         )
 
         assert dtype in [torch.float32, torch.float64], "dtype is not supported"

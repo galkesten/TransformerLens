@@ -1,3 +1,7 @@
+# This utility handles weight conversion for ESMC models.
+# Usage of this code with ESMC 600M weights is subject to the 
+# EvolutionaryScale Cambrian Non-Commercial License. 
+# See LICENSE.ESM and LICENSE.ESM_OPEN for details.
 import einops
 
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
